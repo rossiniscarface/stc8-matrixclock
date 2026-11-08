@@ -1,0 +1,264 @@
+<title>Matrix Clock Twin</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: device on top as the stage, transport below, then description | events.
+   The device itself stays dark acrylic with blue square LEDs like the original in both themes. */
+:root {
+  --bg: #f3f1f0;
+  --fl: #ffffff;
+  --fg: #1f1a19;
+  --leise: #6b605d;
+  --linie: #ddd6d3;
+  --akzent: #c8321f;
+  --akzent-fg: #ffffff;
+  --acryl: #0e0b0b;
+  --led-an: #3f8fff;
+  --led-aus: #0d1828;
+  --schrift: "Barlow", "Segoe UI", system-ui, sans-serif;
+  --schmal: "Barlow Condensed", "Barlow", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #151112; --fl: #1e1819; --fg: #ece6e4; --leise: #a39794; --linie: #352c2c;
+    --akzent: #ff5a43; --akzent-fg: #1a0905; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #151112; --fl: #1e1819; --fg: #ece6e4; --leise: #a39794; --linie: #352c2c;
+  --akzent: #ff5a43; --akzent-fg: #1a0905; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--schrift); font-size: 15px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 40px;
+}
+.rahmen { max-width: 980px; margin: 0 auto; display: grid; gap: 18px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 20px; }
+h1 { font-family: var(--schmal); font-weight: 600; font-size: 1.7rem; letter-spacing: .01em; margin: 0; text-wrap: balance; }
+.unter { color: var(--leise); font-size: .9rem; }
+.wahl { display: grid; gap: 8px; }
+.gruppe { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.gruppe .gname { font: 600 .74rem var(--schmal); letter-spacing: .08em; text-transform: uppercase; color: var(--leise); min-width: 11em; }
+.wahl button {
+  font: 500 .88rem var(--schrift); color: var(--fg); background: var(--fl); border: 1px solid var(--linie);
+  border-radius: 999px; padding: 5px 12px; cursor: pointer;
+}
+.wahl button[aria-pressed="true"] { background: var(--akzent); border-color: var(--akzent); color: var(--akzent-fg); }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--akzent); outline-offset: 2px; }
+
+.geraet {
+  background: var(--acryl); border-radius: 10px; padding: clamp(14px, 3vw, 26px);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 10px 30px -18px rgba(0,0,0,.6);
+  display: grid; gap: 10px;
+}
+.geraet canvas { width: 100%; height: auto; display: block; aspect-ratio: 25 / 7; max-width: 100%; }
+.geraet .fuss { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-family: var(--mono); font-size: .78rem; color: #b9a8a4; }
+.rueck { height: 6px; border-radius: 3px; background: #3f8fff; opacity: 0; box-shadow: 0 0 14px #3f8fff; transition: opacity .08s linear; }
+.ton { display: inline-flex; align-items: center; gap: 6px; }
+.ton .punkt { width: 9px; height: 9px; border-radius: 50%; background: #3a2422; }
+.ton.an .punkt { background: #ffb02e; box-shadow: 0 0 8px #ffb02e; }
+
+.transport { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; }
+.transport button {
+  font: 600 .9rem var(--schrift); padding: 7px 14px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--linie); background: var(--fl); color: var(--fg);
+}
+.transport button.haupt { background: var(--akzent); color: var(--akzent-fg); border-color: var(--akzent); min-width: 6.5em; }
+.transport label { font-size: .85rem; color: var(--leise); display: inline-flex; gap: 6px; align-items: center; }
+.transport select { font: inherit; color: var(--fg); background: var(--fl); border: 1px solid var(--linie); border-radius: 6px; padding: 4px 6px; }
+.zeitleiste { flex: 1 1 260px; display: flex; gap: 10px; align-items: center; min-width: 0; }
+.zeitleiste input { flex: 1; min-width: 0; accent-color: var(--akzent); }
+.zeit { font-family: var(--mono); font-size: .85rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.spalten { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; }
+@media (max-width: 720px) { .spalten { grid-template-columns: 1fr; } }
+section h2 { font-family: var(--schmal); font-weight: 600; font-size: 1.05rem; letter-spacing: .06em; text-transform: uppercase; margin: 0 0 8px; color: var(--leise); }
+.text { margin: 0 0 12px; max-width: 65ch; }
+pre {
+  margin: 0; font-family: var(--mono); font-size: .8rem; line-height: 1.55; background: var(--fl);
+  border: 1px solid var(--linie); border-radius: 6px; padding: 10px 12px; overflow-x: auto; max-height: 300px;
+}
+ol.log { list-style: none; margin: 0; padding: 0; font-family: var(--mono); font-size: .8rem; max-height: 360px; overflow-y: auto; border: 1px solid var(--linie); border-radius: 6px; background: var(--fl); }
+ol.log li { display: grid; grid-template-columns: 5.2em 3.2em minmax(0, 1fr); gap: 8px; padding: 4px 10px; border-bottom: 1px solid var(--linie); color: var(--leise); cursor: pointer; }
+ol.log li:last-child { border-bottom: 0; }
+ol.log li.vergangen { color: var(--fg); }
+ol.log li.jetzt { background: color-mix(in srgb, var(--akzent) 14%, transparent); color: var(--fg); }
+ol.log .art { font-weight: 500; }
+ol.log .inhalt { overflow-wrap: anywhere; }
+.hinweis { font-size: .82rem; color: var(--leise); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="rahmen">
+  <header>
+    <div>
+      <h1>Matrix Clock Twin</h1>
+      <div class="unter">The same firmware as on the clock, compiled on the PC and played from a script</div>
+    </div>
+  </header>
+  <nav class="wahl" id="wahl" aria-label="Runs"></nav>
+
+  <div class="geraet">
+    <canvas id="matrix" width="1000" height="280" aria-label="LED matrix 25 by 7"></canvas>
+    <div class="rueck" id="rueck" title="Rear LEDs"></div>
+    <div class="fuss"><span id="laufname"></span><span class="ton" id="ton"><span class="punkt"></span><span id="tontext">buzzer off</span></span></div>
+  </div>
+
+  <div class="transport">
+    <button class="haupt" id="spielen" type="button">Play</button>
+    <button id="neu" type="button">Restart</button>
+    <label for="tempo">Speed
+      <select id="tempo"><option value="0.25">¼×</option><option value="0.5">½×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option></select>
+    </label>
+    <label for="hoeren"><input type="checkbox" id="hoeren"> buzzer audible</label>
+    <div class="zeitleiste">
+      <input type="range" id="regler" min="0" max="1000" value="0" step="1" aria-label="Time">
+      <span class="zeit" id="zeit">0.0 s</span>
+    </div>
+  </div>
+
+  <div class="spalten">
+    <section>
+      <h2>Sequence</h2>
+      <p class="text" id="text"></p>
+      <pre id="skript"></pre>
+      <p class="hinweis">Script: time in seconds, then action. “befehl” is a live command as if from the ESP.</p>
+    </section>
+    <section>
+      <h2>Events</h2>
+      <ol class="log" id="log"></ol>
+      <p class="hinweis">Tones and messages from the clock. A click jumps to that point.</p>
+    </section>
+  </div>
+</div>
+
+<script>
+const LAEUFE = /*DATEN*/[];
+const cv = document.getElementById('matrix'), cx = cv.getContext('2d');
+let lauf = null, t = 0, spielt = false, letzt = 0, tempo = 1;
+let audio = null, osz = null, tonJetzt = 'aus';
+const FREQ = { '1k': 1024, '4k': 4096, '8k': 8192, '520 Hz T3': 520 };
+
+function farbe(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+function bildBei(ms) {
+  const b = lauf.bilder;
+  let lo = 0, hi = b.length - 1, i = 0;
+  while (lo <= hi) { const m = (lo + hi) >> 1; if (b[m][0] <= ms) { i = m; lo = m + 1; } else hi = m - 1; }
+  return b.length ? b[i][1] : '00'.repeat(25);
+}
+function wertBei(ms, art, vorgabe) {
+  let w = vorgabe;
+  for (const e of lauf.ereignisse) { if (e[0] > ms) break; if (e[1] === art) w = e[2]; }
+  return w;
+}
+const DUTY = [0, .02, .06, .10, .23, .35, .51, .71, .91];
+function tonBei(ms) {
+  let ton = 'aus';
+  for (const e of lauf.ereignisse) { if (e[0] > ms) break; if (e[1] === 'ton') ton = e[2]; }
+  return ton;
+}
+
+function zeichnen() {
+  const hex = bildBei(t), w = cv.width, h = cv.height, sx = w / 25, sy = h / 7, r = Math.min(sx, sy) * 0.36, q = Math.min(sx, sy) * 0.78;
+  cx.fillStyle = farbe('--acryl'); cx.fillRect(0, 0, w, h);
+  const an = farbe('--led-an'), aus = farbe('--led-aus');
+  const stufe = wertBei(t, 'hell', 5), alpha = 0.18 + 0.82 * Math.sqrt(DUTY[stufe] / 0.91);
+  document.getElementById('rueck').style.opacity = (wertBei(t, 'led', 0) / 64).toFixed(2);
+  for (let x = 0; x < 25; x++) {
+    const spalte = parseInt(hex.substr(x * 2, 2), 16);
+    for (let y = 0; y < 7; y++) {
+      const lit = (spalte >> y) & 1;
+      cx.beginPath(); cx.rect(x * sx + (sx - q) / 2, y * sy + (sy - q) / 2, q, q);
+      if (lit) { cx.globalAlpha = 1; cx.fillStyle = aus; cx.fill(); cx.globalAlpha = alpha; cx.shadowColor = an; cx.shadowBlur = r * 1.6 * alpha; cx.fillStyle = an; }
+      else { cx.globalAlpha = 1; cx.shadowBlur = 0; cx.fillStyle = aus; }
+      cx.fill(); cx.globalAlpha = 1;
+    }
+  }
+  cx.shadowBlur = 0;
+  document.getElementById('zeit').textContent = (t / 1000).toFixed(1) + ' s / ' + (lauf.ende / 1000).toFixed(0) + ' s';
+  document.getElementById('regler').value = Math.round(t / lauf.ende * 1000);
+  const ton = tonBei(t);
+  const el = document.getElementById('ton');
+  el.classList.toggle('an', ton !== 'aus' && ton !== '1Hz');
+  document.getElementById('tontext').textContent = ton === 'aus' ? 'buzzer off' : 'buzzer ' + ton.replace('k', ' kHz');
+  hoerbar(ton);
+  document.querySelectorAll('#log li').forEach(li => {
+    const et = +li.dataset.t;
+    li.classList.toggle('vergangen', et <= t);
+  });
+}
+
+function hoerbar(ton) {
+  if (ton === tonJetzt) return;
+  tonJetzt = ton;
+  if (osz) { try { osz.stop(); } catch (e) {} osz = null; }
+  if (!document.getElementById('hoeren').checked || !spielt || !FREQ[ton]) return;
+  try {
+    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    osz = audio.createOscillator(); const g = audio.createGain();
+    osz.type = 'square'; osz.frequency.value = FREQ[ton]; g.gain.value = 0.04;
+    osz.connect(g).connect(audio.destination); osz.start();
+  } catch (e) {}
+}
+
+function schritt(jetzt) {
+  if (!spielt) return;
+  t += (jetzt - letzt) * tempo; letzt = jetzt;
+  if (t >= lauf.ende) { t = lauf.ende; anhalten(); }
+  zeichnen();
+  if (spielt) requestAnimationFrame(schritt);
+}
+function starten() {
+  if (t >= lauf.ende) t = 0;
+  spielt = true; letzt = performance.now(); tonJetzt = '';
+  document.getElementById('spielen').textContent = 'Pause';
+  requestAnimationFrame(schritt);
+}
+function anhalten() {
+  spielt = false; document.getElementById('spielen').textContent = 'Play'; hoerbar('aus');
+}
+
+function waehlen(id) {
+  anhalten();
+  lauf = LAEUFE.find(l => l.id === id) || LAEUFE[0];
+  t = 0;
+  document.querySelectorAll('#wahl button').forEach(b => b.setAttribute('aria-pressed', b.dataset.id === lauf.id));
+  document.getElementById('laufname').textContent = lauf.titel;
+  document.getElementById('text').textContent = lauf.text;
+  document.getElementById('skript').textContent = lauf.skript.trim();
+  const log = document.getElementById('log'); log.innerHTML = '';
+  for (const e of lauf.ereignisse) {
+    if (e[1] === 'led' || e[1] === 'hell') continue;
+    const li = document.createElement('li'); li.dataset.t = e[0];
+    li.innerHTML = `<span>${(e[0] / 1000).toFixed(2)} s</span><span class="art">${e[1] === 'ton' ? 'tone' : 'UART'}</span><span class="inhalt"></span>`;
+    li.querySelector('.inhalt').textContent = e[1] === 'ton' ? (e[2] === 'aus' ? 'off' : e[2].replace('k', ' kHz')) : e[2];
+    li.addEventListener('click', () => { t = e[0]; zeichnen(); });
+    log.appendChild(li);
+  }
+  if (location.hash.slice(1) !== lauf.id) history.replaceState(null, '', '#' + lauf.id);
+  zeichnen();
+}
+
+const wahl = document.getElementById('wahl');
+const gruppen = {};
+for (const l of LAEUFE) {
+  if (!gruppen[l.gruppe]) {
+    const g = document.createElement('div'); g.className = 'gruppe';
+    const n = document.createElement('span'); n.className = 'gname'; n.textContent = l.gruppe;
+    g.appendChild(n); wahl.appendChild(g); gruppen[l.gruppe] = g;
+  }
+  const b = document.createElement('button'); b.type = 'button'; b.textContent = l.titel; b.dataset.id = l.id;
+  b.addEventListener('click', () => { waehlen(l.id); starten(); }); gruppen[l.gruppe].appendChild(b);
+}
+document.getElementById('spielen').addEventListener('click', () => spielt ? anhalten() : starten());
+document.getElementById('neu').addEventListener('click', () => { t = 0; tonJetzt = ''; if (!spielt) starten(); else zeichnen(); });
+document.getElementById('tempo').addEventListener('change', e => tempo = +e.target.value);
+document.getElementById('hoeren').addEventListener('change', () => { tonJetzt = ''; zeichnen(); });
+document.getElementById('regler').addEventListener('input', e => { t = e.target.value / 1000 * lauf.ende; tonJetzt = ''; zeichnen(); });
+waehlen(location.hash.slice(1));
+</script>

@@ -1,0 +1,9 @@
+# Alarm 06:30 with puzzle "sequence": ringing, touch, puzzle (here with
+# wrong tapping), after 20 s without input it rings again
+zeit 06:29:55
+@0.5 befehl U1
+@1 befehl a06301
+@8 kreis 0.2
+@11 dreieck 0.2
+@12 kreis 0.2
+@40 ende

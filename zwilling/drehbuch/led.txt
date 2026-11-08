@@ -1,0 +1,11 @@
+# Rear-LED effects: constant, breathing, follows the sound (noises), off
+zeit 20:00:00
+@0.5 befehl Vi5
+@1 befehl Vl1
+@4 befehl Vl3
+@12 befehl Vl2
+@13 laut 0.05
+@14 laut 0.05
+@14.4 laut 0.05
+@16 befehl Vl0
+@17 ende

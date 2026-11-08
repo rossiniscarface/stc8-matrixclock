@@ -1,0 +1,6 @@
+# Countdown: 12 s by command, expiry, melody, touching ends it
+zeit 16:20:00
+@0.5 befehl Vt1
+@1 befehl C0012
+@17 kreis 0.2
+@20 ende

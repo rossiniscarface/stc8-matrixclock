@@ -1,0 +1,5 @@
+pyserial>=3.5
+stcgal>=1.10
+# only for the measurement and camera tools in host/
+numpy
+pillow

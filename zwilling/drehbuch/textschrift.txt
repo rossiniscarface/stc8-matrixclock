@@ -1,0 +1,11 @@
+# Text fonts: the same scrolling text in font 2 (thin), 1 (bold), 3 (square bold)
+zeit 12:00:00
+@0.2 befehl Vi5
+@0.3 befehl Vt2
+@0.5 befehl Vs2
+@0.7 befehl lSchrift 2: Hallo Welt! Äpfel Öl Übung 0123
+@12 befehl Vs1
+@12.2 befehl lSchrift 1: Hallo Welt! Äpfel Öl Übung 0123
+@24 befehl Vs3
+@24.2 befehl lSchrift 3: Hallo Welt! Äpfel Öl Übung 0123
+@37 ende

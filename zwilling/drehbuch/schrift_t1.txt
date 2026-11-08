@@ -1,0 +1,7 @@
+# 3x7 fonts in theme 1: FONT 1 (A square), then FONT 2 (B rounded)
+zeit 10:28:46
+@0.2 befehl Vi5
+@0.3 befehl Vt1
+@0.4 befehl Vs1
+@4 befehl Vs2
+@8 ende

@@ -1,0 +1,17 @@
+# Choose font: into the menu, 7x triangle to Schrift, circle; preview on the time,
+# triangle switches, circle saves
+zeit 21:15:00
+@0.2 befehl Vt2
+@2 beide 2.6
+@6 dreieck 0.2
+@7 dreieck 0.2
+@8 dreieck 0.2
+@9 dreieck 0.2
+@10 dreieck 0.2
+@11 dreieck 0.2
+@12 dreieck 0.2
+@14 kreis 0.2
+@16 dreieck 0.2
+@19 dreieck 0.2
+@22 kreis 0.2
+@26 ende

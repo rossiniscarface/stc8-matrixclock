@@ -1,0 +1,4 @@
+# Clock (theme 1), then scrolling text by command, then clock again
+zeit 07:59:55
+@3 befehl lGuten Morgen! Heute: Müll rausstellen
+@20 ende

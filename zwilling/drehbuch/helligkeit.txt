@@ -1,0 +1,14 @@
+# brightness levels 1-8 with all pixels, then automatic
+zeit 20:00:00
+@0.5 befehl k7
+@1 befehl H1
+@3 befehl H2
+@5 befehl H3
+@7 befehl H4
+@9 befehl H5
+@11 befehl H6
+@13 befehl H7
+@15 befehl H8
+@17 befehl K
+@17.2 befehl H0
+@19 ende

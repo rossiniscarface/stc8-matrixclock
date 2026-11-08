@@ -1,0 +1,6 @@
+# Digit effect 3: random pixels. Theme 1, no info rotation; second changes show the effect
+zeit 18:59:56
+@0.2 befehl Vt1
+@0.3 befehl Vi5
+@0.4 befehl Vz3
+@9 ende

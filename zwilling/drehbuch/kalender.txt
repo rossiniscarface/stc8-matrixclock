@@ -1,0 +1,13 @@
+# Calendar: two all-day entries for today run along in the info rotation,
+# an appointment at 18:43 with tone
+zeit 18:42:40
+datum 08.11.26 7
+@0.2 befehl Vt1
+@0.3 befehl Vi0
+@0.4 befehl Vw7
+@0.5 befehl Y-
+@0.7 befehl Y+11080099990Oma hat Geburtstag!
+@0.9 befehl Y+11000099990Müll rausstellen
+@1.1 befehl Y+11082618431Zahnarzt um 19 Uhr
+@1.3 befehl Y?
+@60 ende

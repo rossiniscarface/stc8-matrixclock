@@ -1,0 +1,7 @@
+# Theme 3: HH:MM large, seconds small
+zeit 07:15:52
+@0.2 befehl Vt3
+@0.3 befehl Vi5
+@0.4 befehl Vz4
+@0.5 befehl Vd3
+@10 ende

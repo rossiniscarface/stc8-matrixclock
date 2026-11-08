@@ -1,0 +1,9 @@
+# 5x7 fonts in theme 2: FONT 1 photo, 2 classic thin, 3 square bold
+zeit 10:28:46
+@0.2 befehl Vi5
+@0.3 befehl Vt2
+@0.4 befehl Vs1
+@3 befehl Vs2
+@6 befehl Vs3
+@9 befehl Vs1
+@9.5 ende

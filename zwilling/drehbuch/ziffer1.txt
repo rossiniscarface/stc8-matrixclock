@@ -1,0 +1,6 @@
+# Digit effect 1: build column by column. Theme 1, no info rotation; second changes show the effect
+zeit 18:59:56
+@0.2 befehl Vt1
+@0.3 befehl Vi5
+@0.4 befehl Vz1
+@9 ende

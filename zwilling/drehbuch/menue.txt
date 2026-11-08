@@ -1,0 +1,23 @@
+# Menu tour: both keys 2.5 s, then with the triangle every 3 s on to the end
+zeit 21:15:00
+@2 beide 2.6
+@6.0 dreieck 0.2
+@9.0 dreieck 0.2
+@12.0 dreieck 0.2
+@15.0 dreieck 0.2
+@18.0 dreieck 0.2
+@21.0 dreieck 0.2
+@24.0 dreieck 0.2
+@27.0 dreieck 0.2
+@30.0 dreieck 0.2
+@33.0 dreieck 0.2
+@36.0 dreieck 0.2
+@39.0 dreieck 0.2
+@42.0 dreieck 0.2
+@45.0 dreieck 0.2
+@48.0 dreieck 0.2
+@51.0 dreieck 0.2
+@54.0 dreieck 0.2
+@57.0 dreieck 0.2
+@60.5 kreis 0.2
+@63.0 ende

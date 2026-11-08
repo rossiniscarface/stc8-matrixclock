@@ -1,0 +1,8 @@
+# Night mode: light off -> display off after 10 s; clapping wakes for 15 s; light on
+zeit 23:30:00
+licht 3650
+@0.5 befehl Q1
+@2 licht 4085
+@18 laut 0.05
+@40 licht 3650
+@44 ende

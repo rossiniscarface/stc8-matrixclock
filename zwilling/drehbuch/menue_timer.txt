@@ -1,0 +1,15 @@
+# Set timer: into the menu, 5x triangle to Timer, circle; tap triangle for 2 s and
+# then hold for 7 s (seconds, faster, tens, minutes); circle starts
+zeit 21:15:00
+@2 beide 2.6
+@6 dreieck 0.2
+@7 dreieck 0.2
+@8 dreieck 0.2
+@9 dreieck 0.2
+@10 dreieck 0.2
+@12 kreis 0.2
+@14 dreieck 0.1
+@15 dreieck 0.1
+@16 dreieck 7.5
+@25 kreis 0.2
+@32 ende

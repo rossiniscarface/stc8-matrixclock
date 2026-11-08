@@ -1,0 +1,12 @@
+# Alarm 06:30 with arithmetic problem: triangle counts the digit up, circle confirms
+zeit 06:29:55
+@0.5 befehl U2
+@1 befehl a06301
+@8 kreis 0.2
+@10 dreieck 0.2
+@11 dreieck 0.2
+@12 dreieck 0.2
+@13 kreis 0.2
+@14.5 dreieck 0.2
+@15.5 kreis 0.2
+@24 ende

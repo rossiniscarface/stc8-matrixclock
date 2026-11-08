@@ -1,0 +1,21 @@
+# Menu Anim: every selection demonstrates the animation (menu text -> time -> back)
+zeit 21:15:00
+@0.2 befehl Vw0
+@2 beide 2.6
+@6.0 dreieck 0.2
+@6.8 dreieck 0.2
+@7.6 dreieck 0.2
+@8.4 dreieck 0.2
+@9.2 dreieck 0.2
+@10.0 dreieck 0.2
+@10.8 dreieck 0.2
+@11.6 dreieck 0.2
+@13.4 kreis 0.2
+@17.9 kreis 0.2
+@22.4 kreis 0.2
+@26.9 kreis 0.2
+@31.4 kreis 0.2
+@35.9 kreis 0.2
+@40.4 kreis 0.2
+@44.9 kreis 0.2
+@49.4 ende

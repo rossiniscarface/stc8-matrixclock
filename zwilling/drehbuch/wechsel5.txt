@@ -1,0 +1,7 @@
+# Transition animation 5: split from the centre. Info interval 5 s, then date and weekday
+zeit 18:42:00
+@0.2 befehl Vt1
+@0.3 befehl Vi0
+@0.4 befehl Vz0
+@0.5 befehl Vw5
+@19 ende

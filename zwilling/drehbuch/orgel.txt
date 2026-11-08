@@ -1,0 +1,11 @@
+# Light organ: matrix black, every noise throws a wave
+zeit 22:00:00
+@1 befehl O1
+@2 laut 0.05
+@4 laut 0.05
+@4.3 laut 0.05
+@6 laut 0.05
+@6.2 laut 0.05
+@6.4 laut 0.05
+@9 kreis 0.2
+@11 ende

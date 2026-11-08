@@ -1,0 +1,12 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# firmware build output
+firmware/build/
+
+# digital twin: generated
+zwilling/uhr2_pc
+zwilling/laeufe/
+zwilling/betrachter.html

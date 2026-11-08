@@ -1,0 +1,7 @@
+# Colon 5: blink every second. Theme 2 (large)
+zeit 07:15:00
+@0.2 befehl Vt2
+@0.3 befehl Vi5
+@0.4 befehl Vz0
+@0.5 befehl Vd5
+@6 ende
