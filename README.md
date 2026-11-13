@@ -35,7 +35,8 @@ operating sequences on a replica matrix.
   display flickering; firmware update without unplugging
 
 Operation: [docs/USAGE.md](docs/USAGE.md) ·
-commands for ESP/PC: [docs/PROTOCOL.md](docs/PROTOCOL.md)
+commands for ESP/PC: [docs/PROTOCOL.md](docs/PROTOCOL.md) ·
+ESP8285 with ESPHome / Home Assistant: [docs/ESP.md](docs/ESP.md)
 
 ## Directories
 
@@ -44,7 +45,8 @@ commands for ESP/PC: [docs/PROTOCOL.md](docs/PROTOCOL.md)
 | [`firmware/`](firmware/) | Firmware (`uhr2.c`, `anzeige.c`, `kalender.c`), building and flashing, diagnostic firmwares from the reverse engineering |
 | [`host/`](host/) | PC tools: live commands, setting the clock, test scripts, font source, measurement tools |
 | [`zwilling/`](zwilling/) | Digital twin ("Zwilling"): firmware on the PC, scripts, viewer in the browser |
-| [`docs/`](docs/) | Usage, protocol, pinout, development notes, wish list |
+| [`esp/`](esp/) | ESPHome configuration for an ESP8285 on the serial port |
+| [`docs/`](docs/) | Usage, protocol, ESP connection, pinout, development notes, wish list |
 
 ## Quick start
 
@@ -74,7 +76,7 @@ Port: environment variable `UHR_PORT` (default `/dev/ttyUSB0`).
 call stcgal without reset and briefly disconnect the clock from power:
 
 ```bash
-stcgal -P stc8 -t 18432 -p /dev/ttyUSB0 -o eeprom_erase_enabled=false build/uhr2.hex
+python3 stcgal_pause.py -P stc8 -t 18432 -p /dev/ttyUSB0 -o eeprom_erase_enabled=false build/uhr2.hex
 ```
 
 The STC bootloader cannot read back the flash: the original firmware cannot be
@@ -94,7 +96,7 @@ Details: [zwilling/README.md](zwilling/README.md).
 ## Hardware in brief
 
 STC8A4K32S2A12 (LQFP44, 1T 8051, internal clock 18.432 MHz, 32 KB flash,
-32 KB EEPROM, 4 KB XRAM), DS3231 on P5.4/P5.5, matrix of 25 columns (sink) ×
+32 KB EEPROM, 4 KB XRAM, runs at 5 V – TxD has 5 V levels), DS3231 on P5.4/P5.5, matrix of 25 columns (sink) ×
 7 rows (source P2.0–P2.6) without series resistors, touch P4.3/P4.4, light
 sensor P1.6, microphone P1.7, rear LEDs P2.7, buzzer on the DS3231's SQW
 output. Complete: [docs/PINOUT.md](docs/PINOUT.md).
@@ -109,7 +111,10 @@ is still planned or decided: [docs/WISHLIST.md](docs/WISHLIST.md).
 - RxD/TxD are also matrix columns; reception only happens in short listening
   pauses at 921 600 baud.
 - stcgal: always pass the port with `-p` (as a positional argument it is read
-  as the EEPROM file).
+  as the EEPROM file), and run it via `firmware/stcgal_pause.py` – the
+  bootloader needs a short pause before the frequency trimming.
+- Live commands up to 254 bytes; before firmware of 2026-11-13 only about 61
+  bytes got through reliably.
 
 ## License
 

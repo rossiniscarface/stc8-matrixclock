@@ -260,7 +260,7 @@ static uint8_t lat0 = 0xFF, lat1 = 0xFF, lat3 = 0xFF, lat4 = 0xFF;
 #define HALTE_AUSF   10         /* after the end of line: time for the main loop */
 #define HALTE_MAX    20         /* upper limit, about 100 ms, whatever arrives */
 
-volatile __xdata uint8_t rx_buf[64];    /* read by stc8.c (UART_RX_IRQ) */
+volatile __xdata uint8_t rx_buf[64];    /* read by stc8.c (UART_RX_IRQ), halted state only */
 volatile uint8_t rx_w, rx_r;
 volatile uint8_t tx_puffern, tx_len;    /* reply buffer, see stc8.c */
 __xdata uint8_t tx_buf[128];
@@ -272,6 +272,20 @@ static volatile uint8_t ausfuehrung = 0;   /* set only by the main loop */
 static volatile uint8_t nacht_dunkel = 0;  /* night mode: display off */
 static uint8_t orgel_aktiv;                /* light organ draws by itself */
 static volatile uint8_t ff_folge = 0, leer_c = 0, slot_dunkel = 0;
+
+/* Live command line, written by the UART interrupt. 254 command bytes plus
+ * the check character fit; uint8_t lengths do not allow more.
+ *
+ * It used to go through a 64-byte ring buffer that the main loop only
+ * emptied once per frame - while a line came in, the main loop waited for the
+ * end of the frame. Lines longer than about 61 bytes therefore only got
+ * through if a frame end happened to fall into them; otherwise the rest, often
+ * including the '\n', was lost without a trace (found with an ESP8285 on
+ * 2026-11-13). A bigger ring with 16-bit pointers needed locks and still lost
+ * bytes now and then; writing the line directly in the interrupt needs none. */
+static __xdata uint8_t zeile[255];
+static volatile uint8_t zeile_len, zeile_auf, zeile_fertig, zeile_lang;
+static uint8_t zeile_pos, live;
 
 void uart_isr(void) __interrupt(4) __using(2)
 {
@@ -297,22 +311,43 @@ void uart_isr(void) __interrupt(4) __using(2)
         halte_dauer = 0;
         rx_sync++;
         SBUF = '!';                     /* TxD is push-pull during the pause */
-        /* further down, the 0xFF is stored as the start of the line */
-    } else if (aktiv) {
-        if (c == '\n') {
-            halte_frist = HALTE_AUSF;
-            zeile_da = 1;               /* main loop does not wait for the end of the frame */
-        } else {
-            halte_frist = HALTE_LUECKE;
+        if (!zeile_fertig) {            /* otherwise the previous line still runs */
+            zeile_auf = 1;
+            zeile_len = 0;
+            zeile_lang = 0;
         }
+        return;
+    }
+    if (aktiv) {
+        /* Live operation: the line goes straight into zeile[], 8-bit index,
+         * no shared pointers. While zeile_fertig is set the main loop owns
+         * the line, and nothing is written. */
         if (c == 0xFF)
             return;                     /* remaining sync bytes */
+        if (c == '\n' || c == '\r') {
+            halte_frist = HALTE_AUSF;
+            zeile_da = 1;               /* main loop does not wait for the end of the frame */
+            if (zeile_auf) {
+                zeile_auf = 0;
+                zeile_fertig = 1;
+            }
+            return;
+        }
+        halte_frist = HALTE_LUECKE;
+        if (!zeile_auf)
+            return;
+        if (zeile_len < sizeof zeile)
+            zeile[zeile_len++] = c;
+        else
+            zeile_lang = 1;
+        return;
     }
-    if ((uint8_t)(rx_w - rx_r) < 64) {
+    if ((uint8_t)(rx_w - rx_r) < 64) {  /* halted state: ring buffer, read directly */
         rx_buf[rx_w & 63] = c;
         rx_w++;
     }
 }
+
 
 /* On-time per level in timer ticks (time slot 3450). Exponential, about a
  * factor of 1.5 to 2 per level: the eye perceives brightness
@@ -2421,9 +2456,6 @@ static void dez(uint16_t v)
 /* Commands from the remote side. In the halted state the characters come
  * directly from the UART (sent without gaps), in live operation from the
  * line that zeile_lesen() assembled under the protection of column 1. */
-static __xdata uint8_t zeile[200];
-static uint8_t zeile_len, zeile_pos, live;
-
 static uint8_t ein_avail(void)
 {
     return live ? (uint8_t)(zeile_pos < zeile_len) : uart_avail();
@@ -2787,67 +2819,85 @@ static void befehlsschleife(void)
  * 'h' (halt), 'a' (alarm) and so on. During execution the matrix stays dark
  * so that the reply goes out cleanly via TxD (column 2); that takes a few
  * milliseconds. */
-static uint8_t rx_stufe;
+/* Send the collected reply: with the display lit, wait for a dark time slot
+ * first, because TxD is column 2. */
+static void antwort_senden(void)
+{
+    uint8_t n;
+
+    if (tx_len && aktiv) {
+        ausfuehrung = 1;
+#ifndef ZWILLING
+        while (!slot_dunkel)            /* current time slot finished */
+            ;
+#endif
+        EA = 0;
+        P3M1 &= (uint8_t)~0x02;         /* TxD push-pull */
+        P3M0 |= 0x02;
+        EA = 1;
+        for (n = 0; n < tx_len; n++)
+            uart_putc(tx_buf[n]);
+        ausfuehrung = 0;
+    } else {
+        for (n = 0; n < tx_len; n++)    /* display off (e.g. after 'h') */
+            uart_putc(tx_buf[n]);
+    }
+}
 
 static void live_empfang(void)
 {
-    uint8_t c, sum, n;
+    uint8_t sum, n, ok;
 
     zeile_da = 0;
-    while (uart_avail()) {
-        c = uart_getc();
+#ifdef ZWILLING
+    /* the twin has no UART interrupt: assemble the line as it would */
+    while (!zeile_fertig && uart_avail()) {
+        uint8_t c = uart_getc();
         if (c == 0xFF) {
-            rx_stufe = 1;
+            zeile_auf = 1;
             zeile_len = 0;
-            continue;
+            zeile_lang = 0;
+        } else if (!zeile_auf) {
+        } else if (c == '\n' || c == '\r') {
+            zeile_auf = 0;
+            zeile_fertig = 1;
+        } else if (zeile_len < sizeof zeile) {
+            zeile[zeile_len++] = c;
+        } else {
+            zeile_lang = 1;
         }
-        if (!rx_stufe)
-            continue;
-        if (c != '\n' && c != '\r') {
-            if (zeile_len < sizeof zeile)
-                zeile[zeile_len++] = c;
-            continue;
-        }
-        rx_stufe = 0;
-        sum = 0;
-        for (n = 0; (uint8_t)(n + 1) < zeile_len; n++)
-            sum += zeile[n];
-        if (zeile_len < 2 || zeile[zeile_len - 1] != (uint8_t)(0x40 + (sum & 0x3F))) {
-            rx_fehler++;
-            halten = 0;
-            return;
-        }
-        zeile_len--;
+    }
+#endif
+    if (!zeile_fertig)
+        return;
+    halten = 0;
+    tx_len = 0;
+    tx_puffern = 1;
+    sum = 0;
+    for (n = 0; (uint8_t)(n + 1) < zeile_len; n++)
+        sum += zeile[n];
+    ok = (uint8_t)(zeile_len >= 2 && zeile[zeile_len - 1] == (uint8_t)(0x40 + (sum & 0x3F)));
+    if (zeile_lang) {
+        /* Too long: say so, so that the sender does not just repeat it. */
+        rx_fehler++;
+        uart_puts("zu lang\r\n");
+    } else if (!ok) {
+        /* Bytes missing or garbled: never execute, the sender repeats. */
+        rx_fehler++;
+        uart_puts("pruef\r\n");
+    } else {
         /* Execute with the display lit, only collect the reply. It only goes
          * dark again for sending: TxD is column 2. */
-        halten = 0;
+        zeile_len--;
         live = 1;
         rx_zeilen++;
         zeile_pos = 0;
-        tx_len = 0;
-        tx_puffern = 1;
         befehlsschleife();
-        tx_puffern = 0;
         live = 0;
-        if (tx_len && aktiv) {
-            ausfuehrung = 1;
-#ifndef ZWILLING
-            while (!slot_dunkel)        /* current time slot finished */
-                ;
-#endif
-            EA = 0;
-            P3M1 &= (uint8_t)~0x02;     /* TxD push-pull */
-            P3M0 |= 0x02;
-            EA = 1;
-            for (n = 0; n < tx_len; n++)
-                uart_putc(tx_buf[n]);
-            ausfuehrung = 0;
-        } else {
-            for (n = 0; n < tx_len; n++)    /* display off (e.g. after 'h') */
-                uart_putc(tx_buf[n]);
-        }
-        return;
     }
+    tx_puffern = 0;
+    antwort_senden();
+    zeile_fertig = 0;                   /* the interrupt may take the next line */
 }
 
 /* Copy the initial values of initialised XRAM variables ourselves.

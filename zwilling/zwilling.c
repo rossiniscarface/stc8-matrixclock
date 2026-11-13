@@ -32,7 +32,7 @@ static uint8_t letztes[SPALTEN];
 static int erstes = 1;
 
 /* script */
-typedef struct { double t; char art[16]; char arg[96]; } Ereignis;
+typedef struct { double t; char art[16]; char arg[320]; } Ereignis;
 static Ereignis ev[4096];
 static int ev_n, ev_i;
 
@@ -54,7 +54,7 @@ static uint8_t zubcd(uint8_t v) { return (uint8_t)(((v / 10) << 4) | (v % 10)); 
 static void drehbuch_laden(void)
 {
     const char *pfad = getenv("ZW_SKRIPT");
-    char z[160];
+    char z[400];
     FILE *f;
     double t = 0;
 
@@ -70,12 +70,12 @@ static void drehbuch_laden(void)
         exit(1);
     }
     while (fgets(z, sizeof z, f)) {
-        char *p = z, art[16] = "", arg[96] = "";
+        char *p = z, art[16] = "", arg[320] = "";
         z[strcspn(z, "\r\n")] = 0;
         while (*p == ' ') p++;
         if (!*p || *p == '#') continue;
         if (*p == '@') { t = atof(p + 1); p = strchr(p, ' '); if (!p) continue; p++; }
-        sscanf(p, "%15s %95[^\n]", art, arg);
+        sscanf(p, "%15s %319[^\n]", art, arg);
         if (!strcmp(art, "zeit") && t == 0) {
             int h, m, s;
             sscanf(arg, "%d:%d:%d", &h, &m, &s);

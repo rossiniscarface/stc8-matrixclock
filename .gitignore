@@ -10,3 +10,7 @@ firmware/build/
 zwilling/uhr2_pc
 zwilling/laeufe/
 zwilling/betrachter.html
+
+# ESPHome secrets
+esp/secrets.yaml
+esp/.esphome/

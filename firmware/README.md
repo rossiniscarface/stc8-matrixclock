@@ -24,10 +24,17 @@ The clock's user interface (menu, texts, protocol replies) is German.
   `-DUART_RX_IRQ -DBAUD=921600UL`, the diagnostic firmwares run at 57 600 baud.
 - `flash.sh` aborts an attempt only while stcgal is still waiting for the
   bootloader, never in the middle of writing, and leaves the EEPROM untouched.
-  Environment: `UHR_PORT` (default `/dev/ttyUSB0`).
-- Without running clock firmware: `stcgal -P stc8 -t 18432 -p /dev/ttyUSB0
-  -o eeprom_erase_enabled=false build/uhr2.hex` and briefly disconnect the
-  clock from power.
+  Environment: `UHR_PORT` (default `/dev/ttyUSB0`), `PYTHON` (interpreter with
+  stcgal, default `python3`; with the repo's venv active nothing is needed).
+- stcgal runs via `stcgal_pause.py`: it waits 0.3 s before the frequency
+  trimming. Without that pause the bootloader (BSL 7.3.11U) discards the
+  request and stcgal fails with "Trimming frequency: Protocol error: incorrect
+  frame start" (found 2026-11-13).
+- Without running clock firmware: `python3 stcgal_pause.py -P stc8 -t 18432
+  -p /dev/ttyUSB0 -o eeprom_erase_enabled=false build/uhr2.hex` and briefly
+  disconnect the clock from power. The USB serial adapter must not hang on the
+  same hub port as the clock's supply, or it resets too. Without a backup
+  battery in the DS3231 the time is lost – set it again with `host/stellen.py`.
 - Memory: the program flash (32 KB) is just over 95 % full.
 
 ## Diagnostic firmwares (reverse engineering)

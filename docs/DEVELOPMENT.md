@@ -442,3 +442,49 @@ temperature, `Y+ Y- Yd Y? Yl` calendar, `V`xn setting (w Anim 0-8, z digits
 quiz/test alarm, `Q`n night (2 = off immediately), `O`n organ, `E` raw
 settings, `v` sensors, `x` counters, `k`/`K` test pattern, `h` halt, `R`
 bootloader. Memory: 30.8 of 32 KB.
+
+## Long commands and flashing (2026-11-13)
+
+Found with an ESP8285 (ESPHome) on the serial port: commands longer than
+about 60 bytes got lost. Measured with the FT232R, one attempt per line, sent
+in one go:
+
+| Length | old firmware | new firmware |
+|---|---|---|
+| 20–60 bytes | 30/30 | 50/50 |
+| 64–254 bytes | 0/30, no reply | 50/50 (also with all LEDs on) |
+| 255 / 300 bytes | 0/30 | `zu lang` 50/50 |
+
+**Cause:** the received bytes went into a 64-byte ring buffer that the main
+loop only emptied once per frame; while a line came in, the main loop waited
+for the end of the frame. Longer lines only got through if a frame end
+happened to fall into them – otherwise the rest, often with the `\n`, was lost
+without a trace and without a check error.
+
+**Two attempts that were not good enough:** a 256-byte ring emptied in the
+wait loops (254-byte lines need 257 places; reading the clock over I2C blocks
+the main loop for 3 ms) and a 512-byte ring with 16-bit pointers. Those need
+locks: with `ES = 0` the display interrupt could start inside the window and
+then could no longer be interrupted by the UART (frame end about 20 µs, one
+byte every 10.8 µs) – check errors even at 20 bytes. With `EA = 0` it was
+better, but bytes were still lost now and then.
+
+**Solution:** the UART interrupt writes the live line directly into `zeile[]`
+(8-bit index, 254 bytes plus check character) and sets `zeile_fertig` on
+`\n`; the main loop owns the line until it has executed it. No shared
+pointers, no locks, the interrupt is as short as before. Wrong check
+character: reply `pruef`; too long: `zu lang`. The small ring buffer is only
+used in the halted state (`h`).
+
+**Flashing:** at the same time stcgal failed with "Trimming frequency:
+Protocol error: incorrect frame start", via `R` and with a power cycle alike.
+Recorded by hand, the bootloader (BSL 7.3.11U) answers the trimming request
+correctly – when it comes 0.3 s after the status packet. stcgal sends it
+immediately; the bootloader then discards it, starts the old firmware, and
+stcgal reads its display garbage (`FE`) as the reply. `firmware/stcgal_pause.py`
+inserts the pause; `flash.sh` uses it. Why it worked before without the pause
+is not known.
+
+**Supply:** measured by the user, the STC8 runs at 5 V, TxD has 5 V levels; a
+3.3 V ESP needs a divider on its RX line. The DS3231 has no working backup
+battery: after a power cycle the time is 01.01.00 00:00.

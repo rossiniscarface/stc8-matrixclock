@@ -1,0 +1,501 @@
+# ESPHome configuration for the matrix clock (stc8-matrixclock) on an ESP8285/ESP8266.
+# Wiring and notes: docs/ESP.md. Live protocol: docs/PROTOCOL.md.
+# Needs clock firmware from 2026-11-13 or later (lines up to 254 bytes,
+# replies `pruef` / `zu lang`).
+#
+# Secrets (secrets.yaml, see secrets.yaml.example): wifi_ssid, wifi_password,
+# matrixuhr__encryption_key, matrixuhr__ap_password.
+
+substitutions:
+  name: matrixuhr
+  friendly_name: Matrixuhr
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+
+api:
+  encryption:
+    key: !secret matrixuhr__encryption_key
+  actions:
+    # Appointment: monat/jahr = 0 -> every month/every year, stunde = -1 -> all day
+    - action: termin_setzen
+      variables:
+        monat: int
+        tag: int
+        jahr: int
+        stunde: int
+        minute: int
+        ton: bool
+        termin_text: string
+      then:
+        - script.execute:
+            id: uhr_cmd
+            cmd: !lambda |-
+              char buf[64];
+              if (stunde < 0)
+                snprintf(buf, sizeof(buf), "Y+%02d%02d%02d9999%d",
+                         monat, tag, jahr % 100, ton ? 1 : 0);
+              else
+                snprintf(buf, sizeof(buf), "Y+%02d%02d%02d%02d%02d%d",
+                         monat, tag, jahr % 100, stunde, minute, ton ? 1 : 0);
+              return std::string(buf) + termin_text;
+            warten: true
+        - script.wait: uhr_cmd
+        - lambda: 'id(uhr_letzte).publish_state(id(uhr_antwort));'
+    - action: termine_alle_loeschen
+      then:
+        - script.execute: { id: uhr_cmd, cmd: "Y-", warten: true }
+        - script.wait: uhr_cmd
+        - lambda: 'id(uhr_letzte).publish_state(id(uhr_antwort));'
+    - action: termin_loeschen
+      variables:
+        platz: int
+      then:
+        - script.execute:
+            id: uhr_cmd
+            cmd: !lambda 'char b[16]; snprintf(b, sizeof(b), "Yd%03d", platz); return std::string(b);'
+            warten: true
+        - script.wait: uhr_cmd
+        - lambda: 'id(uhr_letzte).publish_state(id(uhr_antwort));'
+    - action: termin_anzeigen
+      variables:
+        platz: int
+      then:
+        - script.execute:
+            id: uhr_cmd
+            cmd: !lambda 'char b[16]; snprintf(b, sizeof(b), "Yl%03d", platz); return std::string(b);'
+            warten: true
+        - script.wait: uhr_cmd
+        - lambda: 'id(uhr_letzte).publish_state(id(uhr_antwort));'
+    - action: termine_zaehlen
+      then:
+        - script.execute: { id: uhr_cmd, cmd: "Y?", warten: true }
+        - script.wait: uhr_cmd
+        - lambda: 'id(uhr_letzte).publish_state(id(uhr_antwort));'
+
+
+ota:
+  - platform: esphome
+    encryption:
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: Matrixuhr Fallback Hotspot
+    password: !secret matrixuhr__ap_password
+captive_portal:
+
+
+esp8266:
+  board: esp8285        # for an ESP8266EX with 4 MB: esp12e
+
+
+text_sensor:
+  - platform: template
+    id: uhr_letzte
+    name: "Letzte Antwort"
+  - platform: template
+    id: uhr_status
+    name: "Status roh (v)"
+    entity_category: diagnostic
+
+
+logger:
+  baud_rate: 0          # UART0 belongs to the clock – logs only via Wi-Fi
+  level: DEBUG
+
+uart:
+  id: uhr
+  tx_pin: GPIO1         # -> 1 kOhm -> P3.0 (chip pin 18)
+  rx_pin: GPIO3         # <- 1 kOhm / 2 kOhm to GND <- P3.1 (chip pin 19), clock TxD is 5 V
+  baud_rate: 921600
+  rx_buffer_size: 512
+
+time:
+  - platform: homeassistant
+    id: ha_zeit
+    on_time:
+      - seconds: 0
+        minutes: 0
+        hours: 3
+        then:
+          - script.execute: zeit_stellen
+
+globals:
+  - id: uhr_antwort
+    type: std::string
+    restore_value: false
+  - id: byte_pause_us
+    type: int
+    restore_value: true
+    initial_value: '0'
+
+script:
+  # Sends a command as in docs/PROTOCOL.md and reads the reply.
+  # warten=false: only wait for '!' (e.g. melody, the reply only comes after 8 s).
+  # Replies `pruef` (check failed, bytes lost) -> repeat; `zu lang` (more than
+  # 254 bytes) -> give up. No reply -> repeat (up to 3 attempts in total).
+  - id: uhr_cmd
+    mode: queued
+    max_runs: 10
+    parameters:
+      cmd: string
+      warten: bool
+    then:
+      - lambda: |-
+          id(uhr_antwort) = "";
+          uint8_t sum = 0;
+          for (char c : cmd) sum += (uint8_t) c;
+          const uint8_t ff[8] = {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};
+          std::vector<uint8_t> body(cmd.begin(), cmd.end()); // command
+          body.push_back(0x40 + (sum & 0x3F));               // check character
+          body.push_back('\n');
+          const uint32_t pause_us = id(byte_pause_us);       // pause per command byte (0)
+
+          for (int versuch = 1; versuch <= 3; versuch++) {
+            uint8_t b;
+            while (id(uhr).available()) id(uhr).read_byte(&b);  // empty the buffer
+
+            // sync in chunks of 8, stop as soon as '!' arrives (keeps the display dark for less time)
+            bool ack = false;
+            int ff_gesendet = 0;
+            while (!ack && ff_gesendet < 200) {
+              id(uhr).write_array(ff, sizeof(ff));
+              id(uhr).flush();
+              ff_gesendet += sizeof(ff);
+              while (id(uhr).available()) {
+                id(uhr).read_byte(&b);
+                if (b == '!') { ack = true; break; }
+              }
+            }
+            if (!ack) {
+              ESP_LOGW("uhr", "%s: kein Sync-Ack (Versuch %d)", cmd.c_str(), versuch);
+              continue;
+            }
+
+            // Command in one go. The clock firmware since 2026-11-13 takes the
+            // line in its UART interrupt; a pause per byte is not needed (only
+            // kept for testing, default 0).
+            if (pause_us == 0) {
+              id(uhr).write_array(body.data(), body.size());
+            } else {
+              for (uint8_t c : body) {
+                id(uhr).write_byte(c);
+                id(uhr).flush();
+                delayMicroseconds(pause_us);
+              }
+            }
+            id(uhr).flush();
+            ESP_LOGD("uhr", "Sync nach %d x 0xFF bestätigt", ff_gesendet);
+            if (!warten) { ESP_LOGI("uhr", "%s -> (gesendet)", cmd.c_str()); return; }
+
+            bool cr = false;
+            std::string zeile;
+            uint32_t start = millis();
+            while (millis() - start < 150) {
+              while (id(uhr).available()) {
+                id(uhr).read_byte(&b);
+                if (b >= 0x20 && b < 0x7F) { zeile += (char) b; cr = false; }
+                else if (b == '\r') { cr = true; }
+                else if (b == '\n' && cr && !zeile.empty()) {
+                  id(uhr_antwort) = zeile;
+                  if (zeile == "zu lang") {
+                    ESP_LOGE("uhr", "%s: zu lang (max. 254 Byte)", cmd.c_str());
+                    return;                                   // repeating does not help
+                  }
+                  if (zeile == "pruef") {
+                    ESP_LOGW("uhr", "%s: Pruefzeichenfehler (Versuch %d)", cmd.c_str(), versuch);
+                    break;                                    // repeat
+                  }
+                  ESP_LOGI("uhr", "%s -> %s", cmd.c_str(), zeile.c_str());
+                  return;
+                } else { zeile.clear(); cr = false; }      // display garbage
+              }
+              if (id(uhr_antwort) == "pruef") break;
+              App.feed_wdt();
+              yield();
+            }
+            if (id(uhr_antwort) == "pruef") { id(uhr_antwort) = ""; continue; }
+            ESP_LOGW("uhr", "%s: keine Antwort (Versuch %d)", cmd.c_str(), versuch);
+          }
+
+  - id: zeit_stellen
+    then:
+      - if:
+          condition:
+            lambda: 'return id(ha_zeit).now().is_valid();'
+          then:
+            - script.execute:
+                id: uhr_cmd
+                cmd: !lambda |-
+                  auto t = id(ha_zeit).now();
+                  char buf[16];
+                  snprintf(buf, sizeof(buf), "s%02d%02d%02d", t.hour, t.minute, t.second);
+                  return std::string(buf);
+                warten: true
+            - script.execute:
+                id: uhr_cmd
+                cmd: !lambda |-
+                  auto t = id(ha_zeit).now();
+                  int wt = (t.day_of_week + 5) % 7 + 1;   // ESPHome 1=Sun -> clock 1=Mon
+                  char buf[16];
+                  snprintf(buf, sizeof(buf), "D%02d%02d%02d%d",
+                           t.day_of_month, t.month, t.year % 100, wt);
+                  return std::string(buf);
+                warten: true
+
+  - id: alarm_senden
+    then:
+      - script.execute:
+          id: uhr_cmd
+          cmd: !lambda |-
+            char buf[16];
+            snprintf(buf, sizeof(buf), "a%02d%02d%d",
+                     id(alarm_zeit).hour, id(alarm_zeit).minute,
+                     id(alarm_an).state ? 1 : 0);
+            return std::string(buf);
+          warten: true
+
+text:
+  - platform: template
+    name: "Befehl (roh)"
+    entity_category: diagnostic
+    mode: text
+    max_length: 254             # bytes; umlauts count 2
+    optimistic: true
+    set_action:
+      - script.execute: { id: uhr_cmd, cmd: !lambda 'return x;', warten: true }
+      - script.wait: uhr_cmd
+      - lambda: 'id(uhr_letzte).publish_state(id(uhr_antwort));'
+
+  - platform: template
+    name: "Lauftext"
+    mode: text
+    max_length: 253             # + 'l' = 254 bytes; umlauts count 2
+    optimistic: true
+    set_action:
+      - script.execute:
+          id: uhr_cmd
+          cmd: !lambda 'return "l" + x;'
+          warten: true
+
+number:
+  - platform: template
+    name: "Bytepause (µs)"
+    entity_category: config
+    min_value: 0
+    max_value: 200
+    step: 5
+    optimistic: true
+    restore_value: true
+    initial_value: 0
+    set_action:
+      - globals.set: { id: byte_pause_us, value: !lambda 'return (int) x;' }
+
+  - platform: template
+    name: "Helligkeit (0 = Auto)"
+    min_value: 0
+    max_value: 8
+    step: 1
+    optimistic: true
+    restore_value: true
+    initial_value: 0
+    set_action:
+      - script.execute:
+          id: uhr_cmd
+          cmd: !lambda 'return "H" + to_string((int) x);'
+          warten: true
+
+  - platform: template
+    name: "Countdown starten (Minuten)"
+    min_value: 0
+    max_value: 99
+    step: 1
+    optimistic: true
+    initial_value: 0
+    set_action:
+      - script.execute:
+          id: uhr_cmd
+          cmd: !lambda 'char b[16]; snprintf(b, sizeof(b), "C%02d00", (int) x); return std::string(b);'
+          warten: true
+
+select:
+  - platform: template
+    id: alarm_melodie
+    name: "Alarm-Melodie"
+    options: ["1", "2", "3", "4", "5"]
+    optimistic: true
+    restore_value: true
+    set_action:
+      - script.execute:
+          id: uhr_cmd
+          cmd: !lambda 'return "N" + x;'
+          warten: true
+
+  - platform: template
+    id: sel_raetsel
+    name: "Alarm-Rätsel"
+    options: ["aus", "Symbolcode", "Rechnen"]
+    optimistic: true
+    restore_value: true
+    set_action:
+      - script.execute:
+          id: uhr_cmd
+          cmd: !lambda 'return "U" + to_string(id(sel_raetsel).index_of(x).value_or(0));'
+          warten: true
+
+  - platform: template
+    name: "Animation"
+    options: ["0", "1", "2", "3", "4", "5", "6", "7", "8"]
+    optimistic: true
+    restore_value: true
+    set_action:
+      - script.execute: { id: uhr_cmd, cmd: !lambda 'return "Vw" + x;', warten: true }
+
+  - platform: template
+    name: "Ziffern-Effekt"
+    options: ["0", "1", "2", "3", "4", "5"]
+    optimistic: true
+    restore_value: true
+    set_action:
+      - script.execute: { id: uhr_cmd, cmd: !lambda 'return "Vz" + x;', warten: true }
+
+  - platform: template
+    name: "Doppelpunkt-Effekt"
+    options: ["1", "2", "3", "4", "5"]
+    optimistic: true
+    restore_value: true
+    set_action:
+      - script.execute: { id: uhr_cmd, cmd: !lambda 'return "Vd" + x;', warten: true }
+
+  - platform: template
+    id: sel_info
+    name: "Info-Rotation"
+    options: ["0", "1", "2", "3", "4", "aus"]
+    optimistic: true
+    restore_value: true
+    set_action:
+      - script.execute:
+          id: uhr_cmd
+          cmd: !lambda 'return "Vi" + to_string(id(sel_info).index_of(x).value_or(0));'
+          warten: true
+
+  - platform: template
+    name: "Theme"
+    options: ["1", "2", "3"]
+    optimistic: true
+    restore_value: true
+    set_action:
+      - script.execute: { id: uhr_cmd, cmd: !lambda 'return "Vt" + x;', warten: true }
+
+  - platform: template
+    id: sel_led
+    name: "Rück-LEDs"
+    options: ["aus", "konstant", "Ton folgen", "atmen"]
+    optimistic: true
+    restore_value: true
+    set_action:
+      - script.execute:
+          id: uhr_cmd
+          cmd: !lambda 'return "Vl" + to_string(id(sel_led).index_of(x).value_or(0));'
+          warten: true
+
+  - platform: template
+    name: "Schrift"
+    options: ["1", "2", "3"]
+    optimistic: true
+    restore_value: true
+    set_action:
+      - script.execute: { id: uhr_cmd, cmd: !lambda 'return "Vs" + x;', warten: true }
+
+datetime:
+  - platform: template
+    id: alarm_zeit
+    name: "Alarm-Zeit"
+    type: time
+    optimistic: true
+    restore_value: true
+    initial_value: "06:30:00"
+    on_value:
+      - script.execute: alarm_senden
+
+switch:
+  - platform: template
+    id: alarm_an
+    name: "Alarm"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    on_turn_on:
+      - script.execute: alarm_senden
+    on_turn_off:
+      - script.execute: alarm_senden
+
+  - platform: template
+    name: "Nachtmodus"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    turn_on_action:
+      - script.execute: { id: uhr_cmd, cmd: "Q1", warten: true }
+    turn_off_action:
+      - script.execute: { id: uhr_cmd, cmd: "Q0", warten: true }
+
+  - platform: template
+    name: "Lichtorgel"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    turn_on_action:
+      - script.execute: { id: uhr_cmd, cmd: "O1", warten: true }
+    turn_off_action:
+      - script.execute: { id: uhr_cmd, cmd: "O0", warten: true }
+
+button:
+  - platform: template
+    name: "Zeit stellen"
+    on_press:
+      - script.execute: zeit_stellen
+  - platform: template
+    name: "Testalarm"
+    on_press:
+      - script.execute: { id: uhr_cmd, cmd: "U9", warten: false }
+  - platform: template
+    name: "Display aus"
+    on_press:
+      - script.execute: { id: uhr_cmd, cmd: "Q2", warten: true }
+  - platform: template
+    name: "Melodie probehören"
+    on_press:
+      - script.execute:
+          id: uhr_cmd
+          cmd: !lambda 'return "M" + to_string(id(alarm_melodie).active_index().value_or(0) + 1);'
+          warten: false
+  - platform: template
+    name: "Lichtorgel-Welle"
+    on_press:
+      - script.execute: { id: uhr_cmd, cmd: "O2", warten: true }
+  - platform: template
+    name: "Countdown stoppen"
+    on_press:
+      - script.execute: { id: uhr_cmd, cmd: "C0000", warten: true }
+
+sensor:
+  - platform: template
+    id: uhr_temp
+    name: "Temperatur"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    accuracy_decimals: 2
+    update_interval: never
+
+interval:
+  - interval: 5min
+    then:
+      - script.execute: { id: uhr_cmd, cmd: "T", warten: true }
+      - script.wait: uhr_cmd
+      - lambda: |-
+          auto v = parse_number<float>(id(uhr_antwort));
+          if (v.has_value()) id(uhr_temp).publish_state(*v);
+      - script.execute: { id: uhr_cmd, cmd: "v", warten: true }
+      - script.wait: uhr_cmd
+      - lambda: 'if (!id(uhr_antwort).empty()) id(uhr_status).publish_state(id(uhr_antwort));'

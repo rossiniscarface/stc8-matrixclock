@@ -29,7 +29,7 @@ zurueck() { stty -F "$PORT" "$gesichert" 2>/dev/null; }
 trap zurueck EXIT
 
 stty -F "$PORT" "$BAUD" cs8 -parenb -cstopb -echo raw 2>/dev/null || {
-    echo "isp_reset: stty fehlgeschlagen" >&2
+    echo "isp_reset: stty failed" >&2
     exit 1
 }
 
@@ -40,7 +40,7 @@ stty -F "$PORT" "$BAUD" cs8 -parenb -cstopb -echo raw 2>/dev/null || {
 # works the same way.
 ff=""
 for _ in $(seq 1 600); do ff="$ff\377"; done
-printf "${ff}RR\n" > "$PORT" || { echo "isp_reset: Schreiben fehlgeschlagen" >&2; exit 1; }
+printf "${ff}RR\n" > "$PORT" || { echo "isp_reset: write failed" >&2; exit 1; }
 
 # Wait until the 603 bytes are out (6.5 ms) before the port setting is
 # restored - otherwise the baud rate changes in the middle of the stream. It

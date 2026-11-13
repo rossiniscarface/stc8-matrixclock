@@ -13,6 +13,10 @@
 # Usage: ./flash.sh [hex] (default build/uhr2.hex)
 # Environment: UHR_PORT (default /dev/ttyUSB0), RESET=... other reset script,
 #              STC_BAUD for isp_reset.sh (default 921600)
+#              PYTHON: interpreter with stcgal installed (default python3)
+#
+# stcgal runs via stcgal_pause.py, which waits 0.3 s before the frequency
+# trimming - without it the bootloader discards the request (see there).
 cd "$(dirname "$0")"
 HEX="${1:-build/uhr2.hex}"
 PORT="${UHR_PORT:-/dev/ttyUSB0}"
@@ -21,7 +25,7 @@ LOG=$(mktemp)
 trap 'rm -f "$LOG"' EXIT
 
 for versuch in 1 2 3 4 5; do
-    stcgal -P stc8 -t 18432 -p "$PORT" -o eeprom_erase_enabled=false -a -r "$RESET" "$HEX" > "$LOG" 2>&1 &
+    "${PYTHON:-python3}" -u ./stcgal_pause.py -P stc8 -t 18432 -p "$PORT" -o eeprom_erase_enabled=false -a -r "$RESET" "$HEX" > "$LOG" 2>&1 &
     pid=$!
     verbunden=0
     for _ in $(seq 1 60); do                    # wait 6 s for the bootloader

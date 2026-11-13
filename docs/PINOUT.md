@@ -9,9 +9,9 @@ the grid. Brightness of the hits 215–248 against a background of 26.
 
 Everything in this document was determined **in software only** – pins driven
 and read by test firmwares, observed via camera, ADC readings and I²C
-acknowledgements. The only measurement with an instrument is the supply at
-the light sensor (about 4.9 V, the board's 5 V rail; the microcontroller itself
-runs at 3.3 V).
+acknowledgements. Measured with an instrument are only the supply voltages:
+the microcontroller runs at 5 V (pin 14), the 5 V rail shows about 4.9 V at the
+light sensor, and the AMS1117-3.3 supplies the DS3231.
 
 ## The display
 

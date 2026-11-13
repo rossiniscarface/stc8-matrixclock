@@ -21,8 +21,8 @@ the translation.
 
 All pin assignments in this repo were determined **in software only**: pins
 were driven and read from test firmwares, observed via camera, ADC readings
-and I²C acknowledgements. The only measurement with an instrument is the
-supply at the light sensor (about 4.9 V).
+and I²C acknowledgements. Measured with an instrument are only the supply
+voltages (see below).
 
 The UART pins are on the right side of the chip (back of the board, "STC"
 lettering readable). Pin 1 is marked at the bottom left; counting runs
@@ -30,7 +30,7 @@ counter-clockwise, so the right side goes 12 … 22 from bottom to top.
 
 | Pin | Signal | Connect to |
 |---|---|---|
-| 14 | Vcc 3.3 V | not needed, the clock has its own supply |
+| 14 | Vcc 5 V | not needed, the clock has its own supply |
 | 16 | GND | GND |
 | 18 | P3.0 RxD | TX of the remote side |
 | 19 | P3.1 TxD | RX of the remote side |
@@ -47,11 +47,38 @@ chip pins, without a resistor: the chip reliably recognises the 3.3 V levels
 (50/50 commands on the first attempt). A level shifter towards the clock is
 not needed.
 
-**Supply voltages:** the board has a 5 V rail (about 4.9 V, measured with a
-multimeter at the light sensor), but the microcontroller runs at 3.3 V from
-the AMS1117 regulator (U2). TxD (P3.1) therefore drives 3.3 V levels, which a
-3.3 V ESP can take directly. The 1 kΩ resistor towards the clock is only
-Claude's precaution and not tested.
+**Supply voltages (measured):** the microcontroller runs at **5 V** (pin 14
+against pin 16), the board's 5 V rail shows about 4.9 V at the light sensor.
+The AMS1117-3.3 (U2) supplies 3.3 V to the DS3231. TxD (P3.1) therefore
+drives **5 V levels**: a 3.3 V ESP needs a voltage divider on the line clock
+TX → ESP RX, e.g. 1 kΩ in series and 2 kΩ to GND (5 V → 3.3 V). Towards the
+clock, 3.3 V levels are recognised reliably (tested with the FT232R).
+
+**Series resistor towards RxD:** outside the listening pauses P3.0 is driven
+hard low as matrix column 1, so a resistor of about 1 kΩ between the remote TX
+and P3.0 limits that current. During reception P3.0 is quasi-bidirectional
+with a weak internal pull-up; with a large resistor the low level at the pin
+rises. 1 kΩ is a good value, 2 kΩ is not recommended (not measured).
+
+### Tested with an ESP8285 (ESPHome)
+
+Full wiring and the ESPHome configuration: [ESP.md](ESP.md).
+
+An ESP8285 on UART0 (GPIO1/GPIO3) at 921 600 baud works with this protocol.
+Recommendations from that setup:
+
+- Send the sync in small chunks (e.g. 8 × `0xFF`) and stop as soon as `!`
+  arrives; then send command, check character and `\n` **in one go**. No pause
+  between the bytes is needed: since firmware of 2026-11-13 the UART interrupt
+  writes the line directly into the line buffer (measured with the FT232R:
+  50/50 lines each at 20, 64, 100, 200 and 254 bytes, also with all LEDs on).
+- While a command is still running (e.g. `M`, 8 s), a new line is acknowledged
+  with `!` but dropped – wait for the reply before sending the next line.
+- Keep gaps inside the line below about 4 ms – after 1 to 2 frames without a
+  byte the clock ends the hold and discards the rest of the line silently.
+- Evaluate `pruef` and `zu lang` (see below) and repeat only after `pruef` or
+  when no reply came.
+- The ESP's own log must not use UART0 (`logger: baud_rate: 0`).
 
 ## Why a custom protocol
 
@@ -70,12 +97,24 @@ in short **listening pauses** (5 per frame, 80 µs each, all rows off).
    the clock switches the matrix dark and sends the acknowledgement `!`. Whoever
    reads the acknowledgement may end the sync immediately – then the display is
    dark for a shorter time.
-2. **Command:** ASCII or UTF-8 (scrolling text), at most about 200 characters.
+2. **Command:** ASCII or UTF-8 (scrolling text), at most **254 bytes**
+   (umlauts, °, € and § count as 2–3 bytes). Firmware before 2026-11-13 only
+   took about 61 bytes reliably (64-byte receive buffer).
 3. **Check character:** `0x40 + (sum of all command bytes & 0x3F)`. Lines with a
    wrong check character are discarded – a truncated line must never run as a
    different command.
 4. **End of line** `\n`. Afterwards the display continues; the command is
    executed with the display lit.
+
+Errors are answered instead of silently ignored:
+
+| Reply | Meaning | What to do |
+|---|---|---|
+| `pruef` | check character wrong or bytes lost (check failed) | repeat the line |
+| `zu lang` | more than 254 command bytes (too long) | shorten, do not repeat |
+
+A line that is cut off because the hold ended (gap of more than one or two
+frames) is not recognised as a line at all and gets no reply.
 
 The display is dark for about 1.5 ms per command. If no characters arrive for
 10 ms, the clock gives up the line.
@@ -124,7 +163,7 @@ void uhr_befehl(const char *cmd) {
 | `Y+MMTTJJhhmmfText` | calendar entry (MM/JJ = 00: every month/every year, hhmm = 9999: all day, f = 1 with tone) | `platz n` (slot n) |
 | `Y-` / `Ydnnn` | delete all / slot nnn | `kalender leer` / `geloescht` (calendar empty / deleted) |
 | `Y?` / `Ylnnn` | count / show slot nnn | `3 belegt, 501 frei` (3 used, 501 free) |
-| `v` | light sensor, level, touch, night mode, wake-up reasons, microphone peak | |
+| `v` | status, see below | `3366 8 touch 278/287 255/256 nacht 0/0/0 weck mic/touch 0/0 spitze 0` |
 | `r` | registers 0x0B, 0x0E, 0x0F | |
 | `E` | raw settings (EEPROM sector 0) | |
 | `x` | counters: characters, syncs, lines, check errors, dark time slots | |
@@ -133,6 +172,20 @@ void uhr_befehl(const char *cmd) {
 | `R` | jump into the bootloader (flashing) | |
 | `h` | halt: display off, afterwards commands **without** framing directly; `w` continue | |
 | `u` | update mode | |
+
+### Reply to `v`
+
+`3366 8 touch 278/287 255/256 nacht 0/0/0 weck mic/touch 0/0 spitze 0`
+
+| Field | Meaning |
+|---|---|
+| `3366` | light sensor raw value (ADC 6, 0–4095, high = dark) |
+| `8` | current brightness level 1–8 |
+| `touch 278/287` | circle: idle value / current value (touched = clearly higher) |
+| `255/256` | triangle: idle value / current value |
+| `nacht 0/0/0` | night mode: setting (0/1) / display dark now (0/1) / remaining wake frames |
+| `weck mic/touch 0/0` | wake-ups so far by microphone / by touch |
+| `spitze 0` | highest microphone value in the dark since the last `v` (reset by `v`) |
 
 ## Flashing via the serial port
 
