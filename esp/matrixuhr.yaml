@@ -411,6 +411,19 @@ select:
           cmd: !lambda 'return "Vs" + to_string(id(sel_schrift).index_of(x).value_or(0) + 1);'
           warten: true
 
+  - platform: template
+    id: sel_mikro
+    name: "Mikro-Schwelle"
+    options: ["20", "30", "40", "50", "60", "70", "80", "90"]
+    initial_option: "50"
+    optimistic: true
+    restore_value: true
+    set_action:
+      - script.execute:
+          id: uhr_cmd
+          cmd: !lambda 'return "Vm" + to_string(id(sel_mikro).index_of(x).value_or(3) + 2);'
+          warten: true
+
 datetime:
   - platform: template
     id: alarm_zeit

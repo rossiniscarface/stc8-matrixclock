@@ -26,10 +26,17 @@ The clock's user interface (menu, texts, protocol replies) is German.
   bootloader, never in the middle of writing, and leaves the EEPROM untouched.
   Environment: `UHR_PORT` (default `/dev/ttyUSB0`), `PYTHON` (interpreter with
   stcgal, default `python3`; with the repo's venv active nothing is needed).
-- stcgal runs via `stcgal_pause.py`: it waits 0.3 s before the frequency
+- stcgal runs via `stcgal_pause.py`: it waits 0.3 s (`STC_PAUSE`) before the frequency
   trimming. Without that pause the bootloader (BSL 7.3.11U) discards the
   request and stcgal fails with "Trimming frequency: Protocol error: incorrect
   frame start" (found 2026-11-13).
+- **No series resistor in the RX line when flashing.** With the 1 kΩ of the
+  ESP wiring between adapter TX and P3.0 (pin 18), stcgal fails with
+  "incorrect frame start" during trimming or "bootloader does not answer";
+  once it broke off in the middle of writing. With the clamp directly on the
+  pin: flashed in attempt 1 and 2 (2026-11-14, found by the user; with the
+  resistor back in: 5 of 5 failed, without it again attempt 2). Live
+  commands work through the resistor; only the bootloader does not.
 - Without running clock firmware: `python3 stcgal_pause.py -P stc8 -t 18432
   -p /dev/ttyUSB0 -o eeprom_erase_enabled=false build/uhr2.hex` and briefly
   disconnect the clock from power. The USB serial adapter must not hang on the

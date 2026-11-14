@@ -152,7 +152,7 @@ void uhr_befehl(const char *cmd) {
 | `aHHMMx` | alarm at HH:MM, x = 1 on / 0 off | `alarm gesetzt` (alarm set) |
 | `lText` | scrolling text (UTF-8, umlauts, °, €, §) | `ok` |
 | `CMMSS` | start countdown, `C0000` ends it | `countdown 120` |
-| `Vxn` | setting: `w` Anim 0–8, `z` digits 0–5, `d` colon 1–5, `i` info 0–5 (5 = off), `t` theme 1–3, `l` LED 0–3, `h` brightness 0–8, `s` font 1–3 | `ok` |
+| `Vxn` | setting: `w` Anim 0–8, `z` digits 0–5, `d` colon 1–5, `i` info 0–5 (5 = off), `t` theme 1–3, `l` LED 0–3, `h` brightness 0–8, `s` font 1–3, `m` microphone threshold 2–9 (×10: 20–90, default 5) | `ok` |
 | `t1` / `t2` | theme 1 or 2 | `ok` |
 | `Hn` | fixed brightness 1–8, `H0` automatic | `hell n` (brightness n) |
 | `Nn` | choose alarm melody 1–5 | `melodie gewaehlt` (melody chosen) |

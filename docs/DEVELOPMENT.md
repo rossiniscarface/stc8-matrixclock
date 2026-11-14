@@ -484,6 +484,9 @@ immediately; the bootloader then discards it, starts the old firmware, and
 stcgal reads its display garbage (`FE`) as the reply. `firmware/stcgal_pause.py`
 inserts the pause; `flash.sh` uses it. Why it worked before without the pause
 is not known.
+Update 2026-11-14: the same error came back and was caused by the 1 kΩ series
+resistor in the RX line (ESP wiring); clamped directly on pin 18 it flashes in
+the first or second attempt.
 
 **Supply:** measured by the user, the STC8 runs at 5 V, TxD has 5 V levels; a
 3.3 V ESP needs a divider on its RX line. The DS3231 has no working backup
@@ -504,7 +507,11 @@ Measured through the ESP and Home Assistant, details and tables in
   where P2.7 does not switch, so it is the LED current, not switching edges.
   The firmware comment "the LEDs couple in up to 20" holds for the matrix,
   not for the rear LEDs.
-- No firmware change yet. Options: rear LEDs off during each ADC sample, or
-  ignore the microphone while they are lit; in hardware a series resistor for
-  the rear LEDs or an RC filter on the microphone supply.
+- Follow-up the same day: without ESP the rear LEDs raise the microphone only
+  to about 24. The 4095 is a feedback chain (lit wave + rear LEDs over the
+  threshold → next wave), which only sustains itself with a running ESP.
+  Firmware fix: rear LEDs dark during the light organ, 0.5 s dead time after
+  each wave, threshold adjustable as setting "Mikro" (`Vm2`…`Vm9`, EEPROM byte
+  13, 0 = default 50). Also used by the rear-LED mode "Ton"; night-mode
+  wake-up stays at 20.
 

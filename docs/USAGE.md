@@ -46,7 +46,8 @@ saving.
 | LED | rear LEDs | aus, konstant, Ton (follow noises), Atmen (breathing) |
 | Ton | key beep | an/aus |
 | Nacht | night mode | an/aus |
-| Orgel | light organ | start it (touching ends it) |
+| Mikro | microphone threshold | 20–90 (default 50): light organ and rear LEDs "Ton"; higher = less sensitive |
+| Orgel | light organ | start it (touching ends it); rear LEDs stay dark meanwhile |
 | Update | firmware update | waits for new firmware (display dark, rear LEDs on) |
 | Ende | end | leave the menu |
 

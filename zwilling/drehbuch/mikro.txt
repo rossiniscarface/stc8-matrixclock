@@ -1,0 +1,13 @@
+# Light organ with rear LEDs on: they stay dark; dead time 0.5 s; threshold "Mikro"
+zeit 22:00:00
+@0.5 befehl Vl1
+@1 befehl O1
+@2 laut 0.05
+@2.2 laut 0.05
+@3 laut 0.05
+@4 befehl Vm9
+@5 laut 0.05
+@6 befehl Vm3
+@6.5 befehl E
+@7 kreis 0.2
+@8 ende

@@ -46,6 +46,8 @@ by point. ✅ = present, ➕ = wanted, ✖ = deliberately not.
     Technical catch: the microphone is only quiet with the matrix dark (rest
     up to 9); lit LEDs couple in up to 20. Listening therefore happens in the
     dark time slots or with a threshold above the crosstalk level.
+    Since 2026-11-14: rear LEDs dark during the organ, dead time after each
+    wave, threshold adjustable ("Mikro").
 
 ## Decisions at acceptance (2026-11-08)
 

@@ -19,5 +19,6 @@ zeit 21:15:00
 @51.0 dreieck 0.2
 @54.0 dreieck 0.2
 @57.0 dreieck 0.2
-@60.5 kreis 0.2
-@63.0 ende
+@60.0 dreieck 0.2
+@63.5 kreis 0.2
+@66.0 ende

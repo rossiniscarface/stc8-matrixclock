@@ -41,6 +41,9 @@ numbering in [PROTOCOL.md](PROTOCOL.md#pins-on-the-chip).
   low as matrix column 1; the resistor limits the current against the ESP's
   output. Larger values raise the low level at the pin (P3.0 has a weak
   internal pull-up during reception); 2 kΩ is not recommended.
+- **Flashing does not work through the 1 kΩ** (stcgal "incorrect frame
+  start", see [firmware/README.md](../firmware/README.md)): flash with the
+  adapter clamped directly on pin 18.
 - Measured on 2026-11-13 through exactly this network (with a FT232R in place
   of the ESP): 50/50 lines at 4, 20, 64, 100, 200 and 254 bytes, also with all
   LEDs on, no check error in 650 lines.
@@ -159,6 +162,44 @@ higher ("darker") with the rear LEDs on.
 Not affected: the normal clock display (the microphone is not sampled there)
 and night mode with rear LEDs off.
 
+**Follow-up 2026-11-14, without ESP / with ESP on its own supply** (light
+organ on, 30 s per mode, room quiet):
+
+| Rear LEDs | no ESP | ESP only on GND | ESP on its own 3.3 V |
+|---|---|---|---|
+| off | 8 | 6 | 14–25 |
+| constant | 24 | – (clap during the run) | 30, then 4095 after one wave |
+| breathing | 23 | 21 | 4095 |
+
+The 4095 is not a steady state but a **feedback chain**: a lit wave adds its
+own matrix current, together with the rear LEDs the microphone goes over the
+threshold, and that triggers the next wave. Triggered without sound (`O2`):
+rear LEDs off → the wave runs out (19–25); constant without ESP → one extra
+wave (72), then back to 21; constant with a running ESP → endless (4095).
+Dark display (`Q2`) without ESP: 7–9, also with only GND connected (5–7);
+with the ESP running on its own supply 16.
+
+**Fixed in the firmware (2026-11-14):** rear LEDs dark while the light organ
+runs, 0.5 s dead time after every wave, threshold adjustable (`Vm2`…`Vm9`,
+menu "Mikro", default 50). Checked on the clock without ESP: rear LEDs
+"constant" + `O2` → 9 in silence, 25 for the wave, then 9 again.
+
+**With the ESP fully connected (own supply, RX/TX through the resistor
+network)** the rear LEDs are not the only cause: the ESP alone raises the
+quiet level in the light organ to 30, the rear LEDs are dark.
+
+| ESP fully connected, light organ | threshold 30 | threshold 50 |
+|---|---|---|
+| quiet | 30 | 31 |
+| one wave (`O2`) | 4095, chain | 46, one wave |
+| one clap | – | 148, one wave |
+
+Only GND connected (ESP on its own supply): quiet 11, wave 22. So the extra
+comes through the signal lines. The dead time only slows a chain down (at most
+two waves per second), the threshold breaks it; hence the default of 50. The
+margin is small (46 vs. 50); which line is responsible (RX or TX) has not
+been measured yet.
+
 ### Smaller points
 
 - **`O2` does nothing unless the light organ is on** (the firmware only fires
@@ -176,7 +217,7 @@ and night mode with rear LEDs off.
 | Problem | Hardware | Firmware | ESP only |
 |---|---|---|---|
 | `Q2` wakes | own ESP supply (done in the test setup) | higher threshold or more hits | – |
-| light organ / rear LEDs | series resistor for the rear LEDs, RC filter on the microphone supply | switch the rear LEDs off for the microseconds of each ADC sample, or ignore the microphone while they are lit | – |
+| light organ / rear LEDs | series resistor for the rear LEDs, RC filter on the microphone supply | ✅ rear LEDs dark in the light organ, dead time after each wave, threshold `Vm` | select "Mikro-Schwelle" |
 | `O2` | – | `O2` also without the light organ | send `O1`, `O2`, `O0` |
 | busy | – | reply `#` instead of `!` while busy | wait about 9 s after `M…`/`U9` |
 

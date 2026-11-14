@@ -208,6 +208,9 @@ static uint8_t wechsel = 2, ziffer_eff = 0, dpunkt = 5, info_int = 2;
 static uint8_t schrift = 1;     /* 1..3: theme 2 style 1-3; 3x7: 2 = rounded, otherwise square */
 static uint8_t led_eff = 0, led_merk = 1;  /* rear LEDs: 0 off, 1 constant, 2 sound, 3 breathing */
 static uint8_t hell_fest;       /* 0: from light sensor, 1..8: fixed level */
+static uint8_t mikro = 5;       /* microphone threshold in tens (light organ, rear LEDs "Ton") */
+#define MIKRO_MIN 2             /* setting "Mikro": 20..90 */
+#define MIKRO_MAX 9
 static volatile uint8_t uart_frei = 0;  /* 1: P3.0 dark, 2: P3.0 and P3.1, 3: P3.1 */
 
 static volatile uint8_t aktiv = 0;
@@ -1210,10 +1213,11 @@ static void fenster(uint16_t off)
 #define M_LED     13
 #define M_TON     14
 #define M_NACHT   15
-#define M_ORGEL   16
-#define M_UPDATE  17
-#define M_ENDE    18
-#define MENUEZAHL 19
+#define M_MIKRO   16
+#define M_ORGEL   17
+#define M_UPDATE  18
+#define M_ENDE    19
+#define MENUEZAHL 20
 
 
 static uint8_t ton_an = 1;
@@ -1354,7 +1358,8 @@ static void einst_speichern(void)
     e[10] = info_int;
     e[11] = hell_fest;
     e[12] = schrift;
-    for (i = 13; i < E_ZAHL; i++)
+    e[13] = mikro;
+    for (i = 14; i < E_ZAHL; i++)
         e[i] = 0;
     iap_dunkel();
     iap_loeschen(0);
@@ -1381,6 +1386,7 @@ static uint8_t einst_laden(void)
     v = iap_lesen(10); if (v <= 5) info_int = v;
     v = iap_lesen(11); if (v <= 8) hell_fest = v;
     v = iap_lesen(12); if (v >= 1 && v <= 3) schrift = v;
+    v = iap_lesen(13); if (v >= MIKRO_MIN && v <= MIKRO_MAX) mikro = v;
     return 1;
 }
 
@@ -1415,10 +1421,16 @@ static void bild_bauen(void)
  * same time; a new one only starts when the youngest has travelled a bit,
  * so that one clap does not trigger several.
  *
- * Microphone: threshold 30 is above the LED crosstalk level (up to 20 with
- * the full clock display), so detection also works while a wave is lit.
- * Clapping gave 47-59. */
-#define ORGEL_SCHWELLE 30
+ * Microphone: a lit wave raises the microphone itself - 19 without ESP, 46
+ * with an ESP on RX/TX (quiet: 30). With the rear LEDs lit it reached 72.
+ * Above the threshold a wave triggers the next one, with an ESP an endless
+ * chain (microphone at 4095). Hence: threshold "Mikro" default 50, rear LEDs
+ * dark during the organ, and a dead time after every wave. Clapping: 47-148. */
+#define ORGEL_SCHWELLE ((uint16_t)(mikro * 10u))
+/* Dead time after each wave: the microphone is ignored for this many frames.
+ * Measured 2026-11-14: a lit wave raises the microphone itself (19 with the
+ * rear LEDs off, 72 with them on), so a wave could trigger the next one. */
+#define ORGEL_TOTZEIT  90       /* frames, about 0.5 s */
 #define ORGEL_SCHRITT  5        /* frames per half pixel of radius, about 28 ms */
 #define WELLEN         4
 #define RING_ABSTAND   6        /* half pixels between the rings of a wave */
@@ -1437,7 +1449,7 @@ static const __code uint8_t ABSTAND2[7][25] = {
     { 25, 23, 21, 19, 17, 15, 13, 12, 10,  8,  7,  6,  6,  6,  7,  8, 10, 12, 13, 15, 17, 19, 21, 23, 25 }
 };
 static __xdata uint8_t welle_r[WELLEN];
-static uint8_t orgel_k;
+static uint8_t orgel_k, orgel_tot;
 
 static void orgel_start(void)
 {
@@ -1447,6 +1459,7 @@ static void orgel_start(void)
         welle_r[w] = WELLE_FREI;
     leeren();
     orgel_k = 0;
+    orgel_tot = 0;
     orgel_aktiv = 1;
 }
 
@@ -1466,8 +1479,10 @@ static void orgel_welle(void)
         else if (welle_r[w] < jung)
             jung = welle_r[w];
     }
-    if (frei != WELLE_FREI && jung >= RING_ABSTAND)
+    if (frei != WELLE_FREI && jung >= RING_ABSTAND) {
         welle_r[frei] = 0;
+        orgel_tot = ORGEL_TOTZEIT;
+    }
 }
 
 static void orgel_schritt(void)
@@ -1823,7 +1838,7 @@ static void update_modus(void)
 static const char * const __code MENUE_NAME[MENUEZAHL] = {
     "Zeit", "Datum", "Alarm", "Klang", "Quiz", "Timer", "Thema", "Schrift",
     "Anim", "Ziffern", "Punkt", "Info", "Hell", "LED", "Ton", "Nacht",
-    "Orgel", "Update", "Ende"
+    "Mikro", "Orgel", "Update", "Ende"
 };
 static const char * const __code W_AN_AUS[2] = { "aus", "an" };
 static const char * const __code W_QUIZ[3]   = { "aus", "Code", "Rechnen" };
@@ -1879,6 +1894,7 @@ static void menue_text_art(uint8_t punkt, uint8_t mit_name)
     case M_LED:    tp_add(W_LED[led_eff]); break;
     case M_TON:    tp_add(W_AN_AUS[ton_an]); break;
     case M_NACHT:  tp_add(W_AN_AUS[nacht_modus]); break;
+    case M_MIKRO:  tp_zahl2((uint8_t)(mikro * 10)); break;
     default: break;
     }
     mt_start();
@@ -2105,6 +2121,10 @@ static void menue(void)
             break;
         case M_NACHT:
             nacht_modus = (uint8_t)!nacht_modus;
+            einst_speichern();
+            break;
+        case M_MIKRO:
+            mikro = (uint8_t)(mikro >= MIKRO_MAX ? MIKRO_MIN : mikro + 1);
             einst_speichern();
             break;
         case M_ORGEL:
@@ -2618,6 +2638,7 @@ static void befehlsschleife(void)
             else if (a == 'l' && q <= 3) led_eff = q;
             else if (a == 'h' && q <= 8) hell_fest = q;
             else if (a == 's' && q >= 1 && q <= 3) schrift = q;
+            else if (a == 'm' && q >= MIKRO_MIN && q <= MIKRO_MAX) mikro = q;
             einst_speichern();
             uart_puts("ok\r\n");
         } else if (t == 'T') {
@@ -2956,7 +2977,9 @@ static void led_tick(void)
 {
     uint16_t p;
 
-    switch (led_eff) {
+    /* Light organ: rear LEDs dark. Lit, they raise the microphone so far
+     * that a wave triggers the next one (measured 2026-11-14). */
+    switch (orgel_aktiv ? 0 : led_eff) {
     case 1:
         led_pegel = 64;                     /* constant: full (chosen by the user) */
         break;
@@ -3066,7 +3089,13 @@ void main(void)
 
     for (;;) {
         if (orgel_aktiv) {
-            laut = (uint8_t)(laut + klatsch_rahmen(ORGEL_SCHWELLE));
+            n = klatsch_rahmen(ORGEL_SCHWELLE);
+            if (orgel_tot) {                /* dead time after a wave: do not listen */
+                orgel_tot--;
+                laut = 0;
+            } else {
+                laut = (uint8_t)(laut + n);
+            }
             if (laut >= MIC_TREFFER) {
                 orgel_welle();
                 laut = 0;
