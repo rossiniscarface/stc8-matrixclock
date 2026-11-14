@@ -488,3 +488,23 @@ is not known.
 **Supply:** measured by the user, the STC8 runs at 5 V, TxD has 5 V levels; a
 3.3 V ESP needs a divider on its RX line. The DS3231 has no working backup
 battery: after a power cycle the time is 01.01.00 00:00.
+
+## Microphone interference (2026-11-14)
+
+Measured through the ESP and Home Assistant, details and tables in
+[ESP.md](ESP.md#known-problems-measured-2026-11-14):
+
+- An ESP supplied from the clock's AMS1117 raises the microphone peaks in the
+  dark from 7–9 to 21–33, so `Q2` and night mode wake by themselves. With its
+  own supply: 12–19, no false wake-up. Distance does not matter: the path is
+  the supply, not radio.
+- Lit rear LEDs (P2.7) drive the microphone input to 4095, in every mode
+  (constant, breathing, sound). The light organ then fires constantly; with
+  breathing the waves follow the LED brightness. Also with constant LEDs,
+  where P2.7 does not switch, so it is the LED current, not switching edges.
+  The firmware comment "the LEDs couple in up to 20" holds for the matrix,
+  not for the rear LEDs.
+- No firmware change yet. Options: rear LEDs off during each ADC sample, or
+  ignore the microphone while they are lit; in hardware a series resistor for
+  the rear LEDs or an RC filter on the microphone supply.
+

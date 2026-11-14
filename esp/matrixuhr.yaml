@@ -41,13 +41,9 @@ api:
                          monat, tag, jahr % 100, stunde, minute, ton ? 1 : 0);
               return std::string(buf) + termin_text;
             warten: true
-        - script.wait: uhr_cmd
-        - lambda: 'id(uhr_letzte).publish_state(id(uhr_antwort));'
     - action: termine_alle_loeschen
       then:
         - script.execute: { id: uhr_cmd, cmd: "Y-", warten: true }
-        - script.wait: uhr_cmd
-        - lambda: 'id(uhr_letzte).publish_state(id(uhr_antwort));'
     - action: termin_loeschen
       variables:
         platz: int
@@ -56,8 +52,6 @@ api:
             id: uhr_cmd
             cmd: !lambda 'char b[16]; snprintf(b, sizeof(b), "Yd%03d", platz); return std::string(b);'
             warten: true
-        - script.wait: uhr_cmd
-        - lambda: 'id(uhr_letzte).publish_state(id(uhr_antwort));'
     - action: termin_anzeigen
       variables:
         platz: int
@@ -66,13 +60,9 @@ api:
             id: uhr_cmd
             cmd: !lambda 'char b[16]; snprintf(b, sizeof(b), "Yl%03d", platz); return std::string(b);'
             warten: true
-        - script.wait: uhr_cmd
-        - lambda: 'id(uhr_letzte).publish_state(id(uhr_antwort));'
     - action: termine_zaehlen
       then:
         - script.execute: { id: uhr_cmd, cmd: "Y?", warten: true }
-        - script.wait: uhr_cmd
-        - lambda: 'id(uhr_letzte).publish_state(id(uhr_antwort));'
 
 
 ota:
@@ -127,16 +117,13 @@ globals:
   - id: uhr_antwort
     type: std::string
     restore_value: false
-  - id: byte_pause_us
-    type: int
-    restore_value: true
-    initial_value: '0'
 
 script:
   # Sends a command as in docs/PROTOCOL.md and reads the reply.
   # warten=false: only wait for '!' (e.g. melody, the reply only comes after 8 s).
   # Replies `pruef` (check failed, bytes lost) -> repeat; `zu lang` (more than
   # 254 bytes) -> give up. No reply -> repeat (up to 3 attempts in total).
+  # Every run ends by publishing "command -> reply" to "Letzte Antwort".
   - id: uhr_cmd
     mode: queued
     max_runs: 10
@@ -152,10 +139,10 @@ script:
           std::vector<uint8_t> body(cmd.begin(), cmd.end()); // command
           body.push_back(0x40 + (sum & 0x3F));               // check character
           body.push_back('\n');
-          const uint32_t pause_us = id(byte_pause_us);       // pause per command byte (0)
 
           for (int versuch = 1; versuch <= 3; versuch++) {
             uint8_t b;
+            id(uhr_antwort) = "";
             while (id(uhr).available()) id(uhr).read_byte(&b);  // empty the buffer
 
             // sync in chunks of 8, stop as soon as '!' arrives (keeps the display dark for less time)
@@ -175,21 +162,16 @@ script:
               continue;
             }
 
-            // Command in one go. The clock firmware since 2026-11-13 takes the
-            // line in its UART interrupt; a pause per byte is not needed (only
-            // kept for testing, default 0).
-            if (pause_us == 0) {
-              id(uhr).write_array(body.data(), body.size());
-            } else {
-              for (uint8_t c : body) {
-                id(uhr).write_byte(c);
-                id(uhr).flush();
-                delayMicroseconds(pause_us);
-              }
-            }
+            // Command in one go: the clock firmware since 2026-11-13 takes the
+            // line in its UART interrupt, no pause per byte needed.
+            id(uhr).write_array(body.data(), body.size());
             id(uhr).flush();
             ESP_LOGD("uhr", "Sync nach %d x 0xFF bestätigt", ff_gesendet);
-            if (!warten) { ESP_LOGI("uhr", "%s -> (gesendet)", cmd.c_str()); return; }
+            if (!warten) {
+              id(uhr_antwort) = "(gesendet)";
+              ESP_LOGI("uhr", "%s -> (gesendet)", cmd.c_str());
+              return;
+            }
 
             bool cr = false;
             std::string zeile;
@@ -217,9 +199,14 @@ script:
               App.feed_wdt();
               yield();
             }
-            if (id(uhr_antwort) == "pruef") { id(uhr_antwort) = ""; continue; }
+            if (id(uhr_antwort) == "pruef") continue;
             ESP_LOGW("uhr", "%s: keine Antwort (Versuch %d)", cmd.c_str(), versuch);
           }
+      - lambda: |-
+          std::string a = id(uhr_antwort);
+          if (a.empty()) a = "(keine Antwort)";
+          std::string c = cmd.size() > 40 ? cmd.substr(0, 40) + "..." : cmd;
+          id(uhr_letzte).publish_state(c + " -> " + a);
 
   - id: zeit_stellen
     then:
@@ -267,8 +254,6 @@ text:
     optimistic: true
     set_action:
       - script.execute: { id: uhr_cmd, cmd: !lambda 'return x;', warten: true }
-      - script.wait: uhr_cmd
-      - lambda: 'id(uhr_letzte).publish_state(id(uhr_antwort));'
 
   - platform: template
     name: "Lauftext"
@@ -282,62 +267,58 @@ text:
           warten: true
 
 number:
+  # Countdown: set minutes and seconds, then press "Countdown starten".
   - platform: template
-    name: "Bytepause (µs)"
-    entity_category: config
-    min_value: 0
-    max_value: 200
-    step: 5
-    optimistic: true
-    restore_value: true
-    initial_value: 0
-    set_action:
-      - globals.set: { id: byte_pause_us, value: !lambda 'return (int) x;' }
-
-  - platform: template
-    name: "Helligkeit (0 = Auto)"
-    min_value: 0
-    max_value: 8
-    step: 1
-    optimistic: true
-    restore_value: true
-    initial_value: 0
-    set_action:
-      - script.execute:
-          id: uhr_cmd
-          cmd: !lambda 'return "H" + to_string((int) x);'
-          warten: true
-
-  - platform: template
-    name: "Countdown starten (Minuten)"
+    id: cd_min
+    name: "Countdown Minuten"
+    mode: box
     min_value: 0
     max_value: 99
     step: 1
     optimistic: true
+    restore_value: true
+    initial_value: 5
+  - platform: template
+    id: cd_sek
+    name: "Countdown Sekunden"
+    mode: box
+    min_value: 0
+    max_value: 59
+    step: 1
+    optimistic: true
+    restore_value: true
     initial_value: 0
-    set_action:
-      - script.execute:
-          id: uhr_cmd
-          cmd: !lambda 'char b[16]; snprintf(b, sizeof(b), "C%02d00", (int) x); return std::string(b);'
-          warten: true
 
 select:
+  # Option names as in the clock's own menu (W_* tables in firmware/uhr2.c).
   - platform: template
-    id: alarm_melodie
-    name: "Alarm-Melodie"
-    options: ["1", "2", "3", "4", "5"]
+    id: sel_hell
+    name: "Helligkeit"
+    options: ["Auto", "1", "2", "3", "4", "5", "6", "7", "8"]
     optimistic: true
     restore_value: true
     set_action:
       - script.execute:
           id: uhr_cmd
-          cmd: !lambda 'return "N" + x;'
+          cmd: !lambda 'return "H" + to_string(id(sel_hell).index_of(x).value_or(0));'
+          warten: true
+
+  - platform: template
+    id: alarm_melodie
+    name: "Alarm-Melodie"
+    options: ["Pip", "Steigend", "Triller", "T3 1 kHz", "T3 520 Hz"]
+    optimistic: true
+    restore_value: true
+    set_action:
+      - script.execute:
+          id: uhr_cmd
+          cmd: !lambda 'return "N" + to_string(id(alarm_melodie).index_of(x).value_or(0) + 1);'
           warten: true
 
   - platform: template
     id: sel_raetsel
     name: "Alarm-Rätsel"
-    options: ["aus", "Symbolcode", "Rechnen"]
+    options: ["aus", "Code", "Rechnen"]
     optimistic: true
     restore_value: true
     set_action:
@@ -347,33 +328,45 @@ select:
           warten: true
 
   - platform: template
+    id: sel_anim
     name: "Animation"
-    options: ["0", "1", "2", "3", "4", "5", "6", "7", "8"]
+    options: ["aus", "Schieben", "Pixel", "Spalten", "Oben", "Mitte", "Rollen", "Auf-Ab", "Wischen"]
     optimistic: true
     restore_value: true
     set_action:
-      - script.execute: { id: uhr_cmd, cmd: !lambda 'return "Vw" + x;', warten: true }
+      - script.execute:
+          id: uhr_cmd
+          cmd: !lambda 'return "Vw" + to_string(id(sel_anim).index_of(x).value_or(0));'
+          warten: true
 
   - platform: template
+    id: sel_ziff
     name: "Ziffern-Effekt"
-    options: ["0", "1", "2", "3", "4", "5"]
+    options: ["aus", "Aufbau", "Fallen", "Pixel", "Auf-Ab", "Mitte"]
     optimistic: true
     restore_value: true
     set_action:
-      - script.execute: { id: uhr_cmd, cmd: !lambda 'return "Vz" + x;', warten: true }
+      - script.execute:
+          id: uhr_cmd
+          cmd: !lambda 'return "Vz" + to_string(id(sel_ziff).index_of(x).value_or(0));'
+          warten: true
 
   - platform: template
+    id: sel_punkt
     name: "Doppelpunkt-Effekt"
-    options: ["1", "2", "3", "4", "5"]
+    options: ["Mitte", "Blenden", "Konstant", "Auf-Ab", "Sekunde"]
     optimistic: true
     restore_value: true
     set_action:
-      - script.execute: { id: uhr_cmd, cmd: !lambda 'return "Vd" + x;', warten: true }
+      - script.execute:
+          id: uhr_cmd
+          cmd: !lambda 'return "Vd" + to_string(id(sel_punkt).index_of(x).value_or(0) + 1);'
+          warten: true
 
   - platform: template
     id: sel_info
     name: "Info-Rotation"
-    options: ["0", "1", "2", "3", "4", "aus"]
+    options: ["5 s", "10 s", "30 s", "1 min", "2 min", "aus"]
     optimistic: true
     restore_value: true
     set_action:
@@ -383,17 +376,21 @@ select:
           warten: true
 
   - platform: template
+    id: sel_thema
     name: "Theme"
-    options: ["1", "2", "3"]
+    options: ["H:M:S", "HH:MM", "HH:MM s"]
     optimistic: true
     restore_value: true
     set_action:
-      - script.execute: { id: uhr_cmd, cmd: !lambda 'return "Vt" + x;', warten: true }
+      - script.execute:
+          id: uhr_cmd
+          cmd: !lambda 'return "Vt" + to_string(id(sel_thema).index_of(x).value_or(0) + 1);'
+          warten: true
 
   - platform: template
     id: sel_led
     name: "Rück-LEDs"
-    options: ["aus", "konstant", "Ton folgen", "atmen"]
+    options: ["aus", "konstant", "Ton", "Atmen"]
     optimistic: true
     restore_value: true
     set_action:
@@ -403,12 +400,16 @@ select:
           warten: true
 
   - platform: template
+    id: sel_schrift
     name: "Schrift"
     options: ["1", "2", "3"]
     optimistic: true
     restore_value: true
     set_action:
-      - script.execute: { id: uhr_cmd, cmd: !lambda 'return "Vs" + x;', warten: true }
+      - script.execute:
+          id: uhr_cmd
+          cmd: !lambda 'return "Vs" + to_string(id(sel_schrift).index_of(x).value_or(0) + 1);'
+          warten: true
 
 datetime:
   - platform: template
@@ -475,6 +476,16 @@ button:
     on_press:
       - script.execute: { id: uhr_cmd, cmd: "O2", warten: true }
   - platform: template
+    name: "Countdown starten"
+    on_press:
+      - script.execute:
+          id: uhr_cmd
+          cmd: !lambda |-
+            char b[16];
+            snprintf(b, sizeof(b), "C%02d%02d", (int) id(cd_min).state, (int) id(cd_sek).state);
+            return std::string(b);
+          warten: true
+  - platform: template
     name: "Countdown stoppen"
     on_press:
       - script.execute: { id: uhr_cmd, cmd: "C0000", warten: true }
@@ -487,6 +498,28 @@ sensor:
     device_class: temperature
     accuracy_decimals: 2
     update_interval: never
+  # From the `v` reply, see docs/PROTOCOL.md
+  - platform: template
+    id: uhr_licht
+    name: "Lichtsensor"
+    icon: mdi:brightness-6
+    accuracy_decimals: 0
+    state_class: measurement
+    update_interval: never        # raw ADC 0-4095, high = dark
+  - platform: template
+    id: uhr_stufe
+    name: "Helligkeitsstufe"
+    icon: mdi:brightness-percent
+    accuracy_decimals: 0
+    update_interval: never        # 1-8, the level currently shown
+  - platform: template
+    id: uhr_mic
+    name: "Mikrofon-Spitze"
+    icon: mdi:microphone
+    entity_category: diagnostic
+    accuracy_decimals: 0
+    state_class: measurement
+    update_interval: never        # highest mic value since the previous `v`
 
 interval:
   - interval: 5min
@@ -496,6 +529,17 @@ interval:
       - lambda: |-
           auto v = parse_number<float>(id(uhr_antwort));
           if (v.has_value()) id(uhr_temp).publish_state(*v);
+  - interval: 60s
+    then:
       - script.execute: { id: uhr_cmd, cmd: "v", warten: true }
       - script.wait: uhr_cmd
-      - lambda: 'if (!id(uhr_antwort).empty()) id(uhr_status).publish_state(id(uhr_antwort));'
+      - lambda: |-
+          // e.g. "3366 8 touch 278/287 255/256 nacht 0/0/0 weck mic/touch 0/0 spitze 0"
+          const std::string &a = id(uhr_antwort);
+          int licht, stufe;
+          if (sscanf(a.c_str(), "%d %d touch", &licht, &stufe) != 2) return;
+          id(uhr_status).publish_state(a);
+          id(uhr_licht).publish_state(licht);
+          id(uhr_stufe).publish_state(stufe);
+          auto p = a.find("spitze ");
+          if (p != std::string::npos) id(uhr_mic).publish_state(atoi(a.c_str() + p + 7));
