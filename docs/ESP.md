@@ -200,6 +200,20 @@ two waves per second), the threshold breaks it; hence the default of 50. The
 margin is small (46 vs. 50); which line is responsible (RX or TX) has not
 been measured yet.
 
+**Rear LEDs "Ton" with the ESP fully connected** (threshold 50, i.e. 50 +
+level/2 while the LEDs are lit):
+
+| Window of one `v` | microphone peak | rear LEDs |
+|---|---|---|
+| quiet, contains the `Vl2` command | 4095 | quiet |
+| quiet, no command but `v` | 77 | quiet |
+| one clap | 4095 | one flash, decays quickly |
+
+Single peaks do not matter here: "Ton" only flashes with at least 3 loud
+values in one frame (the light organ needs 2 within 10 frames). No chain
+after the flash. Where the silent peaks come from is not measured; the ESP's
+sync bytes during a command are the obvious suspect.
+
 ### Smaller points
 
 - **`O2` does nothing unless the light organ is on** (the firmware only fires
